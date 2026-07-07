@@ -1,0 +1,23 @@
+# Projet dbt "immo" — transformations silver → gold sur DuckDB.
+name: "immo"
+version: "1.0.0"
+profile: "immo"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  immo:
+    staging:
+      # Vues légères : typage/renommage au-dessus des Parquet silver
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      # Matérialisation "external" (dbt-duckdb) : chaque mart est écrit en
+      # Parquet dans data/gold/ ET exposé comme vue dans le warehouse DuckDB.
+      # On obtient la couche gold du data lake + un warehouse requêtable.
+      +materialized: external

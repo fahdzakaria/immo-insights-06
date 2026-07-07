@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: mart_prix_m2_par_commune
+    description: Prix au m² par commune × type de bien (carte + comparateur)
+    columns:
+      - name: commune_type_id
+        tests: [unique, not_null]
+      - name: code_commune
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_communes')
+              field: code_commune
+      - name: type_bien
+        tests:
+          - accepted_values:
+              values: [appartement, maison]
+
+  - name: mart_evolution_trimestrielle
+    description: Volumes et prix médians par trimestre (mailles commune et département)
+    columns:
+      - name: evolution_id
+        tests: [unique, not_null]
+      - name: maille
+        tests:
+          - accepted_values:
+              values: [commune, departement]
+      - name: nb_ventes
+        tests: [not_null]
+
+  - name: mart_rendement_locatif
+    description: Rendement locatif brut par commune × type de bien
+    columns:
+      - name: commune_type_id
+        tests: [unique, not_null]
+      - name: prix_m2_median
+        tests: [not_null]
+
+  - name: mart_impact_dpe
+    description: Décote/surcote énergétique par département × type × étiquette
+    columns:
+      - name: impact_id
+        tests: [unique, not_null]
+      - name: etiquette_dpe
+        tests:
+          - not_null
+          - accepted_values:
+              values: [A, B, C, D, E, F, G]
+
+  - name: mart_score_investissement
+    description: Score composite 0-100 par commune × type de bien (≥ 20 ventes/24 mois)
+    columns:
+      - name: commune_type_id
+        tests: [unique, not_null]
+      - name: score_investissement
+        tests: [not_null]

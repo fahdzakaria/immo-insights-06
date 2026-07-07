@@ -1,0 +1,20 @@
+# Image de DÉPLOIEMENT de l'API : les marts gold (~150 Ko) sont EMBARQUÉS —
+# API autonome, aucune base à provisionner. Reconstruire l'image = re-publier
+# des données fraîches.
+#
+# À builder depuis un contexte contenant : Dockerfile, requirements.txt, app/, gold/
+# (le script scripts/deploy_api_hf.sh assemble ce contexte automatiquement).
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+COPY gold /data/gold
+
+ENV GOLD_DIR=/data/gold
+# Hugging Face Spaces attend le port 7860 ; $PORT le surcharge ailleurs (Render…)
+EXPOSE 7860
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

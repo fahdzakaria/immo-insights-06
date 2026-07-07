@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_ventes
+    description: Une ligne par vente propre (nettoyage documenté dans docs/silver.md)
+    columns:
+      - name: vente_id
+        description: Identifiant de mutation DVF (unique après filtre mono-logement)
+        tests: [unique, not_null]
+      - name: prix_m2
+        tests: [not_null]
+      - name: type_bien
+        tests:
+          - not_null
+          - accepted_values:
+              values: [appartement, maison]
+      - name: code_commune
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_communes')
+              field: code_commune
+      - name: etiquette_dpe
+        tests:
+          - accepted_values:
+              values: [A, B, C, D, E, F, G]
+
+  - name: stg_communes
+    description: Référentiel communal INSEE + loyers (national)
+    columns:
+      - name: code_commune
+        tests: [unique, not_null]

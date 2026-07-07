@@ -1,0 +1,10 @@
+# Profil dbt-duckdb. Les chemins sont pilotés par variables d'environnement
+# (définies dans docker-compose.yml), avec des défauts pour un usage hors Docker.
+immo:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../../data/warehouse/immo.duckdb') }}"
+      external_root: "{{ env_var('GOLD_DIR', '/data/gold') }}"
+      threads: 4

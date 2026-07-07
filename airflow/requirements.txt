@@ -1,0 +1,14 @@
+# Dépendances installées DANS l'image Airflow (ingestion + transformations).
+# Bornes majeures pour éviter les breaking changes tout en restant à jour.
+pandas>=2.2,<3
+pyarrow>=16,<19
+scipy>=1.13,<2
+requests>=2.32,<3
+tenacity>=8.3,<10
+duckdb>=1.1,<2
+dbt-core>=1.9,<1.10
+dbt-duckdb>=1.9,<1.10
+pytest>=8,<9
+# Pour exécuter les tests de l'API dans le même conteneur que les autres tests
+fastapi>=0.115,<1
+httpx>=0.27,<1

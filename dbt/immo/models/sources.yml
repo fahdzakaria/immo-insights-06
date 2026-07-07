@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Couche silver du data lake : Parquet nettoyés/enrichis produits par
+      pipelines/silver (voir docs/silver.md). Lus directement par DuckDB
+      via external_location — aucune copie préalable dans le warehouse.
+    tables:
+      - name: ventes_enrichies
+        description: Table de faits — une ligne par vente propre, enrichie (INSEE, loyers, POI, DPE)
+        meta:
+          external_location: >-
+            read_parquet('{{ env_var('DATA_DIR', '/data') }}/silver/ventes_enrichies/departement=*/ventes.parquet', hive_partitioning=true)
+      - name: insee_communes
+        description: Référentiel socio-économique communal (INSEE comparateur de territoires)
+        meta:
+          external_location: >-
+            read_parquet('{{ env_var('DATA_DIR', '/data') }}/silver/insee/communes.parquet')
+      - name: loyers_communes
+        description: Loyers de référence par commune et segment (carte des loyers 2025)
+        meta:
+          external_location: >-
+            read_parquet('{{ env_var('DATA_DIR', '/data') }}/silver/loyers/communes.parquet')

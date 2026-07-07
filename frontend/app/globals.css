@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Direction artistique « Terminal éditorial » — Bloomberg × presse.
+   Charbon chaud, encre claire, hairlines sombres, accent AMBRE
+   terminal ; vert/rouge de cotation pour les variations.
+   Typo : Fraunces (titres), Instrument Sans (corps), Plex Mono (data).
+   Pas de verre, pas de dégradés décoratifs.
+   ============================================================ */
+
+@theme {
+  --color-bg: #0c0c0a; /* charbon chaud */
+  --color-panel: #14140f; /* panneau */
+  --color-ink: #e8e4d6; /* encre claire (texte) */
+  --color-muted: #8a8574; /* encre diluée */
+  --color-line: #2a2820; /* hairline sombre */
+  --color-accent: #ffb020; /* ambre terminal */
+  --color-accent2: #ff6b57; /* corail (négatif / alerte) */
+  --color-good: #45d08c; /* vert de cotation */
+  --color-warn: #ffb020;
+  --color-bad: #ff6b57;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-mono: var(--font-plexmono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Panneau terminal : fond charbon, hairline, ombre offset dure.
+   (La classe garde son nom historique .glass — plus aucun verre ici.) */
+.glass {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+}
+
+.glass-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.glass-hover:hover {
+  transform: translate(-1px, -1px);
+  border-color: var(--color-accent);
+  box-shadow: 6px 6px 0 rgba(255, 176, 32, 0.12);
+}
+
+/* Emphase éditoriale : italique serif à l'ambre */
+.text-gradient {
+  color: var(--color-accent);
+  font-family: var(--font-display);
+  font-style: italic;
+}
+
+/* Micro-label typographique (kickers, axes, légendes) */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pastille « live » qui pulse (dynamisme terminal) */
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--color-good);
+  border-radius: 9999px;
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-good);
+  animation: pulse-live 1.8s ease-out infinite;
+}
+@keyframes pulse-live {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Bandeau ticker (défilement continu, pause au survol) */
+.ticker {
+  overflow: hidden;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-panel);
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 55s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #0c0c0a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ticker-track { animation: none; }
+  .live-dot::after { animation: none; }
+}
+
+/* Tooltip MapLibre, assorti au terminal */
+.maplibregl-popup-content {
+  background: var(--color-panel) !important;
+  color: var(--color-ink) !important;
+  border: 1px solid var(--color-accent);
+  border-radius: 2px !important;
+  padding: 10px 12px !important;
+  font-family: var(--font-sans);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5) !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--color-accent) !important;
+  border-bottom-color: var(--color-accent) !important;
+}

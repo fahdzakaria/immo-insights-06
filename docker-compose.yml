@@ -1,0 +1,145 @@
+# ============================================================================
+# Immo Data Platform — stack complet en une commande : docker compose up
+#
+# Services :
+#   - postgres           : base de métadonnées Airflow
+#   - airflow-init       : migration DB + création du compte admin (one-shot)
+#   - airflow-webserver  : UI Airflow  -> http://localhost:8080 (admin/admin)
+#   - airflow-scheduler  : exécution des DAGs (LocalExecutor)
+#   - api                : FastAPI     -> http://localhost:8000/docs
+#   - frontend           : Next.js    -> ajouté en Phase 6 (profil "frontend")
+#
+# Choix techniques :
+#   - LocalExecutor (pas de Celery/Redis) : suffisant en local, stack plus léger.
+#   - DuckDB est embarqué (pas un service) : le fichier .duckdb vit dans le
+#     volume ./data/warehouse, écrit par Airflow/dbt, lu par l'API en read-only.
+#   - dbt est installé dans l'image Airflow : le DAG enchaîne dbt run/test
+#     sans conteneur supplémentaire.
+# ============================================================================
+
+name: immo-data-platform
+
+x-airflow-common: &airflow-common
+  build: ./airflow
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Paris
+    AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Europe/Paris
+    # Le code des pipelines est monté dans /opt/airflow/pipelines ;
+    # PYTHONPATH permet aux DAGs de faire `from pipelines import ...`
+    PYTHONPATH: /opt/airflow
+    DATA_DIR: /data
+    DUCKDB_PATH: /data/warehouse/immo.duckdb
+    DBT_PROJECT_DIR: /opt/airflow/dbt/immo
+    # Départements traités par le pipeline (paramétrable, ex: "06,83,13")
+    DEPARTEMENTS: ${DEPARTEMENTS:-06}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./pipelines:/opt/airflow/pipelines
+    - ./tests:/opt/airflow/tests
+    - ./api:/opt/airflow/api
+    - ./dbt:/opt/airflow/dbt
+    - ./data:/data
+    - airflow-logs:/opt/airflow/logs
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
+          --firstname Admin --lastname User \
+          --role Admin --email admin@example.com || true
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "${AIRFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Rechargement à chaud du code en dev
+      - ./api/app:/app/app
+      # Le warehouse est monté en lecture seule : DuckDB n'accepte qu'un seul
+      # écrivain à la fois, l'API n'ouvre la base qu'en read-only.
+      - ./data:/data:ro
+    environment:
+      DUCKDB_PATH: /data/warehouse/immo.duckdb
+      GOLD_DIR: /data/gold
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # URL vue depuis le NAVIGATEUR (pas depuis le conteneur)
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres-db:
+  airflow-logs:
