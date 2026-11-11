@@ -1,7 +1,37 @@
-/** Client API typé — toutes les données viennent des marts gold via FastAPI. */
+/**
+ * Client de données typé — tout vient des marts gold. Deux sources possibles,
+ * choisies au build par NEXT_PUBLIC_DATA_SOURCE :
+ *  - "static" (défaut) : marts embarqués en JSON (public/data), filtrés dans
+ *    le navigateur par lib/local-api.ts — aucun serveur à joindre ;
+ *  - "api" : l'API FastAPI (NEXT_PUBLIC_API_URL), utilisée par le stack Docker.
+ */
+
+import { creerApiLocale, decompacter, type Ligne } from "./local-api";
+
+export const SOURCE_DONNEES: "static" | "api" =
+  process.env.NEXT_PUBLIC_DATA_SOURCE === "api" ? "api" : "static";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+
+/** Chaque mart JSON n'est téléchargé qu'une fois par session (promesse mise en cache). */
+const martsEnCache = new Map<string, Promise<Ligne[]>>();
+
+function chargerMart(mart: string): Promise<Ligne[]> {
+  let promesse = martsEnCache.get(mart);
+  if (!promesse) {
+    promesse = fetch(`/data/${mart}.json`).then((res) => {
+      if (!res.ok) throw new Error(`Données indisponibles (${res.status} sur ${mart}.json)`);
+      return res.json().then(decompacter);
+    });
+    // Un échec réseau ne doit pas rester en cache : le prochain appel réessaie
+    promesse.catch(() => martsEnCache.delete(mart));
+    martsEnCache.set(mart, promesse);
+  }
+  return promesse;
+}
+
+const apiLocale = creerApiLocale(chargerMart);
 
 export type TypeBien = "appartement" | "maison";
 
@@ -114,11 +144,12 @@ export interface DetailCommune {
   >)[];
 }
 
-/** GET JSON avec query params (les valeurs null/undefined sont omises). */
+/** GET d'un endpoint (valeurs null/undefined omises) — local ou HTTP selon SOURCE_DONNEES. */
 export async function apiGet<T>(
   path: string,
   params: Record<string, string | number | undefined | null> = {},
 ): Promise<T> {
+  if (SOURCE_DONNEES === "static") return apiLocale(path, params) as Promise<T>;
   const url = new URL(path, API_URL);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));

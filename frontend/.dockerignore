@@ -4,3 +4,6 @@ out
 .git
 Dockerfile
 .dockerignore
+# Jamais de secrets ni de config Vercel dans l'image
+.env*
+.vercel

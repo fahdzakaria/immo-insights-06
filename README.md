@@ -4,7 +4,7 @@
 dashboard 3D interactif, avec un pipeline data industriel au milieu.
 
 **🌐 Démo : [immo-insights-06.vercel.app](https://immo-insights-06.vercel.app)** ·
-**API : [fahedza-immo-insights-api.hf.space/docs](https://fahedza-immo-insights-api.hf.space/docs)**
+**API (instantané de juillet 2026) : [fahedza-immo-insights-api.hf.space/docs](https://fahedza-immo-insights-api.hf.space/docs)**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Airflow](https://img.shields.io/badge/Airflow-2.10-017CEE?logo=apacheairflow&logoColor=white)
@@ -28,22 +28,24 @@ les prix, estimateur de bien et score d'investissement par commune.
 
 ```
       SOURCES PUBLIQUES                DATA LAKE (Parquet, médaillon)            SERVING
-┌────────────────────────┐   ┌───────────────────────────────────────────┐   ┌─────────────────┐
-│ DVF géolocalisé (Etalab)│   │ BRONZE   brut, immuable, idempotent       │   │ FastAPI         │
-│ INSEE comparateur       │──►│          + politique de fraîcheur/source  │──►│ DuckDB in-memory│
-│ DPE ADEME (API)         │   │ SILVER   9 règles de nettoyage, géocodage │   │ vues sur gold   │
-│ Carte des loyers        │   │          BAN, enrichissement spatial KDTree│  └────────┬────────┘
+┌────────────────────────┐   ┌───────────────────────────────────────────┐   ┌──────────────────┐
+│ DVF géolocalisé (Etalab)│   │ BRONZE   brut, immuable, idempotent       │   │ Export JSON des  │
+│ INSEE comparateur       │──►│          + politique de fraîcheur/source  │──►│ marts → embarqués│
+│ DPE ADEME (API)         │   │ SILVER   9 règles de nettoyage, géocodage │   │ dans le site     │
+│ Carte des loyers        │   │          BAN, enrichissement spatial KDTree│  └────────┬─────────┘
 │ OSM Overpass            │   │ GOLD     5 marts dbt (parquet + DuckDB)   │            ▼
 └────────────────────────┘   └───────────────────────────────────────────┘   Next.js 15 + R3F
                                     ▲                                          (Vercel)
-                Airflow (quotidien 06:00, retries, alerting webhook)
-                dbt run + 32 tests qualité bloquants
+                Airflow (quotidien 06:00, retries, alerting webhook)    En local : FastAPI +
+                dbt run + 32 tests qualité bloquants                    DuckDB in-memory
 ```
 
-- **Orchestration** : un DAG Airflow `bronze (5 sources //) → silver → dbt run → dbt test → dbt docs`,
+- **Orchestration** : un DAG Airflow `bronze (5 sources //) → silver → dbt run → dbt test → dbt docs + export JSON du site`,
   dépendances fines par source, `max_active_runs=1` (un seul écrivain DuckDB).
-- **Déploiement** : les marts gold ne pèsent que **152 Ko** → embarqués dans l'image Docker de
-  l'API (HF Spaces). Zéro base de données à héberger. Front statique sur Vercel.
+- **Déploiement** : les marts gold ne pèsent que **152 Ko** → exportés en JSON en fin de DAG et
+  embarqués dans le site (Vercel), qui rejoue la logique de l'API dans le navigateur. Zéro
+  serveur à héberger ; l'API FastAPI reste servie par le stack Docker local. Équivalence
+  vérifiée sur 1 798 requêtes ([docs/deploiement.md](docs/deploiement.md)).
 
 ## Choix techniques (et pourquoi)
 
@@ -110,14 +112,14 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt/immo && dbt b
 
 ```
 ├── docker-compose.yml        # 5 services, une commande
-├── airflow/dags/             # DAG immo_pipeline (13 tâches)
+├── airflow/dags/             # DAG immo_pipeline (14 tâches)
 ├── pipelines/
 │   ├── ingestion/            # 1 module par source, idempotent + TTL fraîcheur
 │   └── silver/               # nettoyage, géocodage BAN (cache), enrichissement KDTree
 ├── dbt/immo/                 # staging → intermediate → 5 marts + 32 tests
 ├── api/                      # FastAPI, 10 endpoints filtrables + Dockerfile.deploy
 ├── frontend/                 # Next.js 15, R3F, MapLibre, Recharts, Framer Motion
-├── scripts/deploy_api_hf.sh  # re-publication de l'API (données fraîches)
+├── scripts/deploy_api_hf.sh  # déploiement de l'API sur un hébergeur Docker
 ├── tests/                    # 46 tests pytest
 └── docs/                     # une doc par couche + déploiement
 ```
@@ -134,8 +136,8 @@ Documentation détaillée : [ingestion](docs/ingestion.md) · [silver](docs/silv
   qualité ont attrapé de vrais problèmes de données
 - **Produit** : une API pensée pour le front (pré-agrégation, filtres en base, cache) et un site
   qui rend 128 600 ventes explorables en quelques millisecondes, design soigné inclus
-- **Pragmatisme** : DuckDB embarqué plutôt qu'un cluster, gold de 152 Ko embarqué dans l'image
-  API plutôt qu'une base hébergée — la solution la plus simple qui marche
+- **Pragmatisme** : DuckDB embarqué plutôt qu'un cluster, gold de 152 Ko embarqué dans le site
+  plutôt qu'une base ou une API hébergée — la solution la plus simple qui marche
 
 ## Licence
 

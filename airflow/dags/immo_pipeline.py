@@ -2,7 +2,7 @@
 
     bronze (5 sources en parallèle)
       → silver (nettoyages en parallèle → enrichissement)
-        → dbt run → dbt test → dbt docs
+        → dbt run → dbt test → dbt docs + export JSON pour le front
 
 Idempotence : le bronze saute les sources déjà ingérées (manifestes) ; le
 silver et dbt recalculent tout (déterministes). Relancer le DAG est donc
@@ -25,7 +25,7 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
-from pipelines import config
+from pipelines import config, export_front
 from pipelines.ingestion import dpe, dvf, insee, loyers, osm
 from pipelines.silver import dpe_clean, dvf_clean, enrichissement, osm_clean, referentiels
 
@@ -105,4 +105,8 @@ with DAG(
     dbt_test = BashOperator(task_id="dbt_test", bash_command=DBT_CMD.format("test"))
     dbt_docs = BashOperator(task_id="dbt_docs", bash_command=DBT_CMD.format("docs generate"))
 
-    silver >> dbt_run >> dbt_test >> dbt_docs
+    # Marts validés par dbt test → JSON embarqués par le site (frontend/public/data).
+    # Publier en ligne = redéployer le front (voir docs/deploiement.md).
+    export_json_front = PythonOperator(task_id="export_json_front", python_callable=export_front.exporter)
+
+    silver >> dbt_run >> dbt_test >> [dbt_docs, export_json_front]

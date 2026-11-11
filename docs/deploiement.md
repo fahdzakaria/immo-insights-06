@@ -1,59 +1,64 @@
 # Déploiement
 
-**URLs de production :**
-- Frontend : https://immo-insights-06.vercel.app (projet Vercel `immo-insights-06`, scope `fahdzakarias-projects`)
-- API : https://fahedza-immo-insights-api.hf.space/docs (Space `fahedza/immo-insights-api`)
+- Site : https://immo-insights-06.vercel.app (projet Vercel `immo-insights-06`, scope `fahdzakarias-projects`)
+- API (historique) : https://fahedza-immo-insights-api.hf.space/docs (Space `fahedza/immo-insights-api`)
 
-## Architecture en ligne
+## Architecture en ligne : site statique, marts embarqués
 
 ```
-Vercel (frontend Next.js)  ──fetch──►  Hugging Face Space (API FastAPI, Docker)
-                                        └── marts gold Parquet EMBARQUÉS (~150 Ko)
+DAG Airflow (local)                         Vercel
+  … → dbt run → dbt test → export_json_front ──►  frontend/public/data/*.json
+                                                  + lib/local-api.ts (filtrage dans le navigateur)
 ```
 
-**Parti pris** : les marts sont si compacts qu'ils sont copiés dans l'image
-Docker de l'API ([api/Dockerfile.deploy](../api/Dockerfile.deploy)). Aucune
-base de données à héberger, aucun secret, cold-start instantané. Publier des
-données fraîches = relancer le script de déploiement (qui reprend le contenu
-de `data/gold/` produit par le DAG local).
+Les 5 marts gold pèsent ~150 Ko en Parquet (~570 Ko en JSON, ~90 Ko une fois
+compressés par Vercel). Le site les embarque et rejoue dans le navigateur la
+logique des endpoints de l'API (`frontend/lib/local-api.ts`) : **aucun serveur
+à héberger, aucun temps de réveil, aucun point de panne**.
 
-## 1. API → Hugging Face Spaces (gratuit, sans CB)
+Ce choix date de novembre 2026 : Hugging Face a rendu payants les Spaces
+Docker gratuits, donc l'API ne pouvait plus être republiée. L'API FastAPI
+reste dans le projet et dans le stack Docker local (`docker compose up`), où
+le site l'interroge (`NEXT_PUBLIC_DATA_SOURCE=api`).
 
-Prérequis une seule fois :
-1. Compte sur https://huggingface.co/join
-2. Token **write** : https://huggingface.co/settings/tokens
-3. `hf auth login` (coller le token)
+| Variable (au build du front) | Valeur | Effet |
+| --- | --- | --- |
+| `NEXT_PUBLIC_DATA_SOURCE` | `static` (défaut) | marts JSON embarqués, pas d'API |
+| | `api` | le site appelle `NEXT_PUBLIC_API_URL` (stack Docker) |
 
-Déploiement (et re-déploiements suivants) :
+## Publier des données fraîches
+
+1. Le DAG `immo_pipeline` termine par la tâche `export_json_front`, qui
+   réécrit `frontend/public/data/` **seulement si les tests dbt passent**.
+   À la main : `make export-front`.
+2. Redéployer le site :
 
 ```bash
-./scripts/deploy_api_hf.sh <ton_pseudo_hf>
-# → https://<pseudo>-immo-insights-api.hf.space/docs
+make publier
+# équivaut à : cd frontend && npx vercel deploy --prod --yes --scope fahdzakarias-projects
 ```
 
-Le script assemble un contexte (Dockerfile + app + gold + README à
-front-matter Spaces), crée le Space s'il n'existe pas, pousse. Build HF ≈ 2 min.
+Prérequis une seule fois : `npx vercel login`. Le pied de page du site affiche
+la date réelle du dernier export (`public/data/meta.json`).
 
-Limite du plan gratuit : le Space s'endort après ~48 h sans trafic et se
-réveille à la première requête (~30 s).
-
-## 2. Frontend → Vercel
-
-Prérequis une seule fois : compte sur https://vercel.com puis `npx vercel login`.
+## Vérifier que le site statique répond comme l'API
 
 ```bash
-cd frontend
-npx vercel deploy --prod --yes \
-  --build-env NEXT_PUBLIC_API_URL=https://<pseudo>-immo-insights-api.hf.space
+docker compose up -d            # l'API locale sert les mêmes marts gold
+make export-front
+cd frontend && node scripts/compare-local-api.ts
+# ✔ 1798 requêtes identiques entre l'API et la version locale
 ```
 
-`NEXT_PUBLIC_API_URL` est figée au build (variable publique côté navigateur).
-L'API accepte tous les origins en GET (CORS ouvert, lecture seule).
+Le script rejoue toutes les vues du site (tous les filtres, toutes les
+communes, toutes les estimations) contre l'API et contre la version locale,
+et échoue à la moindre différence. À relancer après toute modification d'un
+endpoint ou de `lib/local-api.ts`.
 
-## Mises à jour
+## API sur Hugging Face (historique)
 
-| Quoi | Commande |
-| --- | --- |
-| Données fraîches en ligne | `airflow dags trigger immo_pipeline` (local) puis `./scripts/deploy_api_hf.sh <pseudo>` |
-| Nouveau code frontend | `cd frontend && npx vercel deploy --prod --yes --build-env NEXT_PUBLIC_API_URL=…` |
-| Nouveau code API | `./scripts/deploy_api_hf.sh <pseudo>` |
+`scripts/deploy_api_hf.sh <pseudo>` assemble un contexte Docker (API + marts
+gold) et le pousse sur un Space. Depuis novembre 2026 la commande échoue avec
+une erreur 402 sans abonnement PRO ; le Space existant continue de tourner
+avec les données du 7 juillet 2026. Le script fonctionne tel quel sur tout
+hébergeur Docker (`api/Dockerfile.deploy`).

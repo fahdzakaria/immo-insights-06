@@ -11,6 +11,9 @@ COPY . .
 # L'URL de l'API est figée au build (variable NEXT_PUBLIC_*)
 ARG NEXT_PUBLIC_API_URL=http://localhost:8001
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# "static" = marts JSON embarqués (défaut, déploiement Vercel) ; "api" = FastAPI
+ARG NEXT_PUBLIC_DATA_SOURCE=static
+ENV NEXT_PUBLIC_DATA_SOURCE=$NEXT_PUBLIC_DATA_SOURCE
 RUN npm run build
 
 FROM node:22-alpine AS run

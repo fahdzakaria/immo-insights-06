@@ -32,7 +32,7 @@ def test_structure_du_dag(dag):
     attendus = {
         "bronze.dvf", "bronze.insee", "bronze.loyers", "bronze.dpe", "bronze.osm",
         "silver.referentiels", "silver.dpe", "silver.osm", "silver.dvf", "silver.enrichissement",
-        "dbt_run", "dbt_test", "dbt_docs",
+        "dbt_run", "dbt_test", "dbt_docs", "export_json_front",
     }
     assert ids == attendus
 
@@ -45,6 +45,8 @@ def test_dependances_critiques(dag):
     # dbt s'exécute après le silver, tests après run
     assert "dbt_run" in dag.get_task("dbt_test").upstream_task_ids
     assert "silver.enrichissement" in dag.get_task("dbt_run").upstream_task_ids
+    # Le site ne reçoit que des marts validés par les tests dbt
+    assert dag.get_task("export_json_front").upstream_task_ids == {"dbt_test"}
 
 
 def test_garde_fous_operationnels(dag):
