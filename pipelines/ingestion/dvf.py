@@ -11,6 +11,7 @@ import gzip
 import io
 import logging
 import os
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -39,9 +40,17 @@ _STR_COLS = [
 
 
 def annees() -> list[int]:
-    """Années à ingérer, paramétrables via DVF_ANNEES="2021,2022,..."."""
-    raw = os.environ.get("DVF_ANNEES", "2021,2022,2023,2024,2025")
-    return [int(a.strip()) for a in raw.split(",") if a.strip()]
+    """Années à ingérer : de DVF_ANNEE_DEBUT (2021) à l'année en cours.
+
+    L'année en cours est incluse d'office : dès qu'Etalab la publie elle est
+    ingérée sans toucher au code (avant publication : 404, ignoré plus bas).
+    DVF_ANNEES="2021,2022,..." force une liste précise.
+    """
+    raw = os.environ.get("DVF_ANNEES")
+    if raw:
+        return [int(a.strip()) for a in raw.split(",") if a.strip()]
+    debut = int(os.environ.get("DVF_ANNEE_DEBUT") or "2021")
+    return list(range(debut, date.today().year + 1))
 
 
 def dvf_url(dep: str, annee: int) -> str:

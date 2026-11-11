@@ -53,3 +53,11 @@ docker compose exec airflow-scheduler bash -c \
   nationale : le foncier domine la valeur).
 - Meilleurs rendements bruts : arrière-pays (Andon 11,5 %, Tende 10,6 %) —
   prix bas, loyers soutenus.
+
+## Année de référence
+
+Les fenêtres « 24 mois » et les évolutions 1 an / 3 ans s'appuient sur
+`int_annee_reference` : la **dernière année complète** (qui contient des
+ventes en décembre). DVF étant publié par semestre, l'arrivée du 1er semestre
+de l'année en cours ne décale donc pas ces calculs ; ses trimestres
+apparaissent seulement dans `mart_evolution_trimestrielle`.

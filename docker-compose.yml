@@ -36,6 +36,13 @@ x-airflow-common: &airflow-common
     DBT_PROJECT_DIR: /opt/airflow/dbt/immo
     # Départements traités par le pipeline (paramétrable, ex: "06,83,13")
     DEPARTEMENTS: ${DEPARTEMENTS:-06}
+    # Export JSON des marts pour le front statique (monté sur frontend/public/data)
+    FRONT_DATA_DIR: /opt/airflow/front_data
+    # Années DVF : vide = de DVF_ANNEE_DEBUT (2021) à l'année en cours
+    DVF_ANNEES: ${DVF_ANNEES:-}
+    DVF_ANNEE_DEBUT: ${DVF_ANNEE_DEBUT:-2021}
+    # Alerte d'échec du DAG : webhook Slack/Discord (vide = log seulement)
+    ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./pipelines:/opt/airflow/pipelines
@@ -43,6 +50,7 @@ x-airflow-common: &airflow-common
     - ./api:/opt/airflow/api
     - ./dbt:/opt/airflow/dbt
     - ./data:/data
+    - ./frontend/public/data:/opt/airflow/front_data
     - airflow-logs:/opt/airflow/logs
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
@@ -134,6 +142,8 @@ services:
       args:
         # URL vue depuis le NAVIGATEUR (pas depuis le conteneur)
         NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+        # En local le site interroge l'API ; en ligne il embarque les marts en JSON
+        NEXT_PUBLIC_DATA_SOURCE: api
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

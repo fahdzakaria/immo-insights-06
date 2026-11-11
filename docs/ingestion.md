@@ -51,7 +51,7 @@ python -m pipelines.ingestion.run_all --sources dvf,dpe --departements 06,83 --f
 | --- | --- | --- |
 | **DVF géolocalisé** | CSV.gz statique par année/département (`files.data.gouv.fr/geo-dvf`) | Fenêtre glissante ~5 ans : un 404 sur une année est ignoré (warning). Années paramétrables via `DVF_ANNEES`. |
 | **DPE** (ADEME) | API data-fair, dataset `dpe03existant` (~15 M lignes) | Filtré côté API par `code_departement_ban`, sélection de 18 colonnes sur 200+, pagination par curseur `after` (10 000 lignes/page). |
-| **INSEE** comparateur | Zip national (`base_cc_comparateur_csv.zip`) | Population, médiane du niveau de vie, pauvreté… par commune. Le dictionnaire de variables du zip est aussi conservé. |
+| **INSEE** comparateur | Zip national (`comparateur_csv.zip`, format long Melodi depuis 2026 : une ligne par territoire × année × mesure, pivoté en silver) | Population, médiane du niveau de vie, pauvreté… par commune. Le dictionnaire de variables du zip est aussi conservé. |
 | **Carte des loyers** | 4 CSV nationaux via liens permanents data.gouv (`/datasets/r/{id}`) | Millésime 2025. Tout est lu en texte (décimales à virgule) : parsing en silver. |
 | **OSM** (Overpass) | Requête QL sur la zone ISO3166-2 du département | 3 catégories : education, transport, commerce. `nwr … out center` pour avoir un centroïde même sur les bâtiments-polygones. Tags bruts conservés en JSON. |
 

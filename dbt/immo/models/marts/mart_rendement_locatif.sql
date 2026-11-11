@@ -8,7 +8,7 @@
 -- à une seule vente à 500 €/m² → 45 % de rendement fictif).
 
 with annee_max as (
-    select max(annee) as annee_courante from {{ ref('stg_ventes') }}
+    select annee_courante from {{ ref('int_annee_reference') }}
 ),
 
 prix as (
@@ -21,7 +21,7 @@ prix as (
         median(prix_m2)             as prix_m2_median
     from {{ ref('stg_ventes') }}
     cross join annee_max
-    where annee >= annee_courante - 1
+    where annee between annee_courante - 1 and annee_courante
     group by code_commune, type_bien
 )
 

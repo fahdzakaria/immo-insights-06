@@ -23,6 +23,8 @@ PAGE_SIZE = 10_000
 
 # L'ADEME ajoute des DPE en continu : rafraîchissement hebdomadaire
 FRAICHEUR_JOURS = 7
+# Part minimale du total annoncé par l'API pour accepter le téléchargement
+TOLERANCE_COMPLETUDE = 0.99
 
 # Colonnes vérifiées sur le schéma réel du dataset (juillet 2026)
 SELECT_COLS = [
@@ -60,6 +62,18 @@ def rows_from_response(data: dict) -> list[dict]:
     return rows
 
 
+def verifier_complet(nb_lignes: int, total_annonce: int | None, dep: str) -> None:
+    """Refuse un téléchargement tronqué (pagination interrompue sans erreur).
+
+    Sans ce contrôle un parquet partiel serait écrit puis considéré « frais »
+    pendant FRAICHEUR_JOURS. Tolérance 1 % : l'API reçoit des DPE en continu.
+    """
+    if total_annonce and nb_lignes < TOLERANCE_COMPLETUDE * total_annonce:
+        raise ValueError(
+            f"DPE {dep} incomplet : {nb_lignes} lignes reçues sur {total_annonce} annoncées"
+        )
+
+
 def ingest(departements: list[str], force: bool = False) -> list[Path]:
     produced: list[Path] = []
     for dep in departements:
@@ -75,16 +89,20 @@ def ingest(departements: list[str], force: bool = False) -> list[Path]:
             "select": ",".join(c for c in SELECT_COLS if c != "_geopoint") + ",_geopoint",
         }
         all_rows: list[dict] = []
+        total_annonce: int | None = None  # présent seulement sur la 1re page
         url, page = API_URL, 0
         while url:
             data = http_get(url, params=params).json()
             params = None  # le lien `next` embarque déjà tous les paramètres
             all_rows.extend(rows_from_response(data))
+            if total_annonce is None:
+                total_annonce = data.get("total")
             page += 1
             logger.info("DPE %s : page %d, %d lignes cumulées (total annoncé %s)",
                         dep, page, len(all_rows), data.get("total"))
             url = data.get("next")
 
+        verifier_complet(len(all_rows), total_annonce, dep)
         df = pd.DataFrame(all_rows)
         if not df.empty:
             # Dates en datetime pour le parquet (les codes restent en texte)

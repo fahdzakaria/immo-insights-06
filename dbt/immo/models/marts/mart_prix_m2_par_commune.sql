@@ -7,7 +7,7 @@ with par_annee as (
 ),
 
 annee_max as (
-    select max(annee) as annee_courante from par_annee
+    select annee_courante from {{ ref('int_annee_reference') }}
 ),
 
 totaux as (
@@ -23,7 +23,7 @@ totaux as (
     group by code_commune, type_bien
 ),
 
--- Prix de référence : médiane sur les 2 dernières années (volume + fraîcheur)
+-- Prix de référence : médiane sur les 2 dernières années COMPLÈTES (volume + fraîcheur)
 recent as (
     select
         v.code_commune,
@@ -36,7 +36,7 @@ recent as (
         median(v.valeur_fonciere) as prix_median
     from {{ ref('stg_ventes') }} v
     cross join annee_max
-    where v.annee >= annee_max.annee_courante - 1
+    where v.annee between annee_max.annee_courante - 1 and annee_max.annee_courante
     group by v.code_commune, v.type_bien
 ),
 

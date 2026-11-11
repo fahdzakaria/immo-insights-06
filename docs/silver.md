@@ -50,8 +50,8 @@ agrégats communaux, pas dans les analyses de proximité).
 ## Enrichissements (table `ventes_enrichies`)
 
 1. **Contexte communal** (jointure `code_commune`) : population, évolution
-   démographique 2016→2022, niveau de vie médian, taux de pauvreté, taux de
-   vacance, part de résidences secondaires, emploi (INSEE) + loyer de
+   démographique entre les deux derniers recensements (2017→2023), niveau de vie médian, taux de pauvreté, taux de
+   vacance, part de résidences secondaires, emplois salariés (INSEE) + loyer de
    référence €/m² du bon segment — `loyer_m2_ref` = maison ou appartement
    selon le bien (carte des loyers 2025).
 2. **Accessibilité** : `nb_education_500m`, `nb_transport_500m`,

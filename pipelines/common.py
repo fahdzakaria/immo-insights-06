@@ -32,7 +32,12 @@ class RetryableHTTPError(Exception):
 
 
 @retry(
-    retry=retry_if_exception_type((RetryableHTTPError, requests.ConnectionError, requests.Timeout)),
+    # ChunkedEncodingError = connexion coupée EN COURS de lecture du corps (vu sur
+    # l'API ADEME) : ce n'est pas une sous-classe de ConnectionError.
+    retry=retry_if_exception_type((
+        RetryableHTTPError, requests.ConnectionError, requests.Timeout,
+        requests.exceptions.ChunkedEncodingError,
+    )),
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=2, max=60),
     reraise=True,

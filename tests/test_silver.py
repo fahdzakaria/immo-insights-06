@@ -6,7 +6,7 @@ import pytest
 
 from pipelines.silver import dvf_clean, enrichissement
 from pipelines.silver.geocodage import adresse_texte
-from pipelines.silver.referentiels import _num
+from pipelines.silver.referentiels import INSEE_MESURES, _num, pivoter_insee
 
 
 def _vente(**kw):
@@ -135,3 +135,91 @@ class TestEnrichissement:
         out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
         assert pd.isna(out.loc[0, "etiquette_dpe"])
         assert taux == 0.0
+
+
+def _insee_long(geo="06029", niveau="COM", sans=()):
+    """Mini fichier INSEE au format long : toutes les mesures pour un territoire."""
+    valeurs = {
+        "POP": "74350", "SUP": "19.62", "DWELLINGS": "1000", "DWELLINGS_OCS_DW_MAIN": "600",
+        "DWELLINGS_OCS_DW_SEC_DW_OCC": "350", "DWELLINGS_OCS_DW_VAC": "50",
+        "DWELLINGS_OCS_DW_MAIN_TSH_100": "300", "MED_SL": "24000", "PR_MD60": "22.6",
+        "NBEMP_EMPFORM_2": "32120.6", "POP_AGE_Y15T64": "41795", "UNIT_LOC": "4753",
+    }
+    lignes = [
+        {"GEO_OBJECT": niveau, "GEO": geo, "TIME_PERIOD": "2023", "TAB_MEASURE": m, "OBS_VALUE": v}
+        for m, v in valeurs.items() if m not in sans
+    ]
+    # Millésimes antérieurs : ne doivent pas écraser le plus récent
+    lignes += [
+        {"GEO_OBJECT": niveau, "GEO": geo, "TIME_PERIOD": "2017", "TAB_MEASURE": "POP", "OBS_VALUE": "70000"},
+        {"GEO_OBJECT": niveau, "GEO": geo, "TIME_PERIOD": "2012", "TAB_MEASURE": "POP", "OBS_VALUE": "60000"},
+        {"GEO_OBJECT": niveau, "GEO": geo, "TIME_PERIOD": "2017", "TAB_MEASURE": "DWELLINGS", "OBS_VALUE": "900"},
+    ]
+    return lignes
+
+
+class TestPivotINSEE:
+    def test_une_ligne_par_commune_avec_dernier_millesime(self):
+        df = pivoter_insee(pd.DataFrame(_insee_long("06029") + _insee_long("06088")))
+        assert sorted(df["code_commune"]) == ["06029", "06088"]
+        cannes = df[df["code_commune"] == "06029"].iloc[0]
+        assert cannes["population"] == 74350      # 2023, pas 2017
+        assert cannes["logements"] == 1000        # 2023, pas 2017
+        assert cannes["niveau_vie_median"] == 24000
+        assert cannes["taux_pauvrete"] == 22.6
+        assert set(INSEE_MESURES.values()) <= set(df.columns)
+
+    def test_derivees(self):
+        ligne = pivoter_insee(pd.DataFrame(_insee_long())).iloc[0]
+        assert ligne["taux_logements_vacants"] == 5.0
+        assert ligne["taux_residences_secondaires"] == 35.0
+        assert ligne["menages"] == 600
+        # Évolution vs recensement PRÉCÉDENT (2017), pas le plus ancien (2012)
+        assert ligne["population_ref"] == 70000
+        assert ligne["annee_population"] == 2023 and ligne["annee_population_ref"] == 2017
+        assert ligne["evolution_population_pct"] == pytest.approx(6.21)
+
+    def test_niveaux_non_communaux_exclus(self):
+        lignes = _insee_long("06029") + _insee_long("06", niveau="DEP") + _insee_long("13201", niveau="ARM")
+        df = pivoter_insee(pd.DataFrame(lignes))
+        assert sorted(df["code_commune"]) == ["06029", "13201"]  # arrondissements gardés, département non
+
+    def test_commune_sans_revenus_garde_des_na(self):
+        """Petites communes : Filosofi secrétisé → NaN, pas de ligne perdue."""
+        lignes = _insee_long("06029") + [
+            l for l in _insee_long("06050") if l["TAB_MEASURE"] not in ("MED_SL", "PR_MD60")]
+        df = pivoter_insee(pd.DataFrame(lignes)).set_index("code_commune")
+        assert np.isnan(df.loc["06050", "niveau_vie_median"])
+        assert df.loc["06050", "population"] == 74350
+
+    def test_mesure_absente_du_fichier_erreur_explicite(self):
+        with pytest.raises(ValueError, match="Mesures INSEE absentes"):
+            pivoter_insee(pd.DataFrame(_insee_long(sans=("MED_SL",))))
+
+    def test_valeur_vide_au_dernier_millesime_reprend_la_precedente(self):
+        """Secret statistique = ligne présente mais OBS_VALUE vide (cas réel Filosofi)."""
+        lignes = [l for l in _insee_long() if l["TAB_MEASURE"] != "DWELLINGS" or l["TIME_PERIOD"] != "2023"]
+        lignes.append({"GEO_OBJECT": "COM", "GEO": "06029", "TIME_PERIOD": "2023",
+                       "TAB_MEASURE": "DWELLINGS", "OBS_VALUE": None})
+        lignes = [dict(l, OBS_VALUE=None) if l["TAB_MEASURE"] == "MED_SL" else l for l in lignes]
+        ligne = pivoter_insee(pd.DataFrame(lignes)).iloc[0]
+        assert ligne["logements"] == 900            # repli sur 2017
+        assert np.isnan(ligne["niveau_vie_median"])  # jamais renseigné → NaN, ligne conservée
+
+    def test_commune_en_retard_d_un_millesime_conservee(self):
+        """Une commune dont tout s'arrête avant le dernier millésime ne disparaît pas."""
+        retard = [dict(l, GEO="06999", TIME_PERIOD="2022") for l in _insee_long() if l["TIME_PERIOD"] == "2023"]
+        df = pivoter_insee(pd.DataFrame(_insee_long("06029") + retard)).set_index("code_commune")
+        assert df.loc["06999", "population"] == 74350
+
+    def test_doublons_refuses(self):
+        lignes = _insee_long("13201") + _insee_long("13201", niveau="ARM")
+        with pytest.raises(ValueError, match="doublons"):
+            pivoter_insee(pd.DataFrame(lignes))
+
+    def test_population_ref_exige_un_ecart_de_5_ans(self):
+        """Une population annuelle N-1 ne doit pas servir de référence."""
+        lignes = _insee_long() + [{"GEO_OBJECT": "COM", "GEO": "06029", "TIME_PERIOD": "2022",
+                                   "TAB_MEASURE": "POP", "OBS_VALUE": "74000"}]
+        ligne = pivoter_insee(pd.DataFrame(lignes)).iloc[0]
+        assert ligne["annee_population_ref"] == 2017 and ligne["population_ref"] == 70000
