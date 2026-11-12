@@ -152,6 +152,11 @@ def build_loyers() -> Path:
             col_cible: _num(df["loypredm2"]).round(2),
             # La prédiction est-elle au niveau commune ou maille plus large ?
             f"{col_cible}_fiabilite": df["TYPPRED"],
+            # Intervalle de prédiction publié avec la carte + nombre d'annonces
+            # observées dans la commune : sert à borner le rendement
+            f"{col_cible}_bas": _num(df["lwr.IPm2"]).round(2),
+            f"{col_cible}_haut": _num(df["upr.IPm2"]).round(2),
+            f"{col_cible}_nb_annonces": _num(df["nbobs_com"]),
         })
         merged = part if merged is None else merged.merge(
             part.drop(columns="nom_commune"), on="code_commune", how="outer")

@@ -9,6 +9,9 @@
 --   services         (15%) : écoles/transports/commerces proches des biens vendus
 --   tension          (10%) : peu de logements vacants
 -- Seules les communes avec ≥ 20 ventes sur 24 mois sont scorées.
+-- rendement_fiable (loyer prédit à l'échelle de la commune) est exposé pour
+-- que le site puisse écarter les communes dont le rendement — 25 % du score —
+-- repose sur un loyer extrapolé d'une maille plus large (stations, villages).
 
 with services as (
     select
@@ -28,6 +31,8 @@ base as (
         p.nb_ventes_24m,
         p.prix_m2_median,
         r.rendement_brut_pct,
+        r.loyer_fiabilite,
+        r.rendement_fiable,
         p.evolution_3ans_pct,
         c.evolution_population_pct,
         c.taux_logements_vacants,
@@ -61,6 +66,8 @@ select
     nb_ventes_24m,
     prix_m2_median,
     rendement_brut_pct,
+    loyer_fiabilite,
+    rendement_fiable,
     evolution_3ans_pct,
     evolution_population_pct,
     taux_logements_vacants,

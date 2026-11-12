@@ -7,7 +7,7 @@ import { apiGet } from "./api";
 
 export function useApi<T>(
   path: string,
-  params: Record<string, string | number | undefined | null> = {},
+  params: Record<string, string | number | boolean | undefined | null> = {},
 ) {
   const [data, setData] = useState<T | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);

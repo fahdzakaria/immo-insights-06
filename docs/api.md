@@ -12,9 +12,9 @@ Swagger interactif : http://localhost:8001/docs
 | `GET /api/v1/communes` | carte + tableau des communes | `departement`, `type_bien`, `prix_m2_min/max`, `population_min`, `recherche`, `tri`, `ordre`, `limit/offset` |
 | `GET /api/v1/communes/{code}` | fiche commune (prix, rendement, score) | — |
 | `GET /api/v1/tendances` | séries trimestrielles | `departement`, `code_commune`, `type_bien`, `trimestre_min/max` |
-| `GET /api/v1/rendement` | rendement locatif par commune | `departement`, `type_bien`, `rendement_min`, `prix_m2_max`, `tri`, pagination |
-| `GET /api/v1/dpe/impact` | décote/surcote par étiquette | `departement`, `type_bien` |
-| `GET /api/v1/opportunites` | top communes par score | `departement`, `type_bien`, `score_min`, `prix_m2_max`, `limit` |
+| `GET /api/v1/rendement` | rendement locatif par commune, avec fourchette | `departement`, `type_bien`, `rendement_min`, `prix_m2_max`, `loyer_fiable`, `tri`, pagination |
+| `GET /api/v1/dpe/impact` | écart de prix par étiquette, intervalle de confiance, drapeau `fiable` | `departement`, `type_bien` |
+| `GET /api/v1/opportunites` | top communes par score | `departement`, `type_bien`, `score_min`, `prix_m2_max`, `loyer_fiable`, `limit` |
 | `GET /api/v1/estimation` | estimation de prix d'un bien | `code_commune`, `type_bien`, `surface`, `etiquette_dpe` |
 
 ## Comment la rapidité est garantie
@@ -42,3 +42,12 @@ Swagger interactif : http://localhost:8001/docs
 Transparente et explicable (pas un modèle boîte noire) :
 `prix = surface × prix_m2 médian communal (24 mois) × (1 + écart DPE départemental)`,
 fourchette = quartiles p25/p75 locaux, fiabilité = nb de ventes support.
+
+Garde-fous : aucune estimation sous 5 ventes sur 24 mois (404) ; niveau de
+fiabilité `faible` (< 20 ventes), `correcte` (< 100) ou `bonne` ; l'écart DPE
+n'est appliqué que s'il est marqué `fiable` dans `mart_impact_dpe`, sinon la
+réponse porte `ajustement_dpe_applique: false` et le motif.
+
+> Le site en ligne n'appelle pas cette API : il rejoue la même logique dans
+> le navigateur (`frontend/lib/local-api.ts`, voir déploiement). Les
+> sections Rapidité et Sécurité ci-dessus décrivent l'API du stack Docker.

@@ -60,10 +60,26 @@ agrégats communaux, pas dans les analyses de proximité).
    l'échelle départementale).
 3. **Rapprochement DPE** : DVF ne publie aucun identifiant de logement ; on
    attache donc le DPE **le plus vraisemblable** : même type de bien, à
-   < 50 m, surface à ±10 %, départage par (distance, écart de surface).
-   Méthode probabiliste assumée : le taux de couverture est tracé dans le
-   manifeste et la distance de rapprochement (`dpe_distance_m`) conservée
-   pour filtrer plus strictement en aval si besoin.
+   < 50 m, surface à ±10 %, **établi avant la vente** (tolérance 30 jours),
+   départage par (distance, écart de surface). Méthode probabiliste assumée :
+   - `dpe_nb_candidats` et `dpe_ambigu` : en immeuble, plusieurs logements de
+     même surface portent des étiquettes différentes ; la vente est alors
+     marquée ambiguë et **exclue des analyses par étiquette** ;
+   - taux de couverture (48 % sur le 06) et nombre de rapprochements non
+     ambigus (23 825) tracés dans le manifeste ; `dpe_distance_m` conservée.
+
+> **Bug corrigé en novembre 2026.** La projection en mètres calculait sa
+> latitude de référence séparément pour chaque jeu de points (ventes, DPE,
+> POI). Comme x = longitude × R × cos(lat₀), deux références différentes
+> décalaient les jeux de 150 à 700 m d'est en ouest : les DPE étaient
+> rapprochés du mauvais voisin et les POI comptés autour d'un point décalé.
+> La latitude de référence est désormais un paramètre obligatoire, partagé
+> par tous les jeux de points (`latitude_reference`), et un test de
+> non-régression le vérifie. Effet mesuré : l'écart de prix par étiquette,
+> auparavant du bruit (maison F à +19 %), devient cohérent (voir gold).
+> Vérifié après correctif : POI recomptés en haversine sur 600 ventes
+> (99-100 % identiques), 650 rapprochements DPE sur 650 retrouvés à moins
+> de 1 m de la distance enregistrée.
 
 ## Nettoyage DPE
 

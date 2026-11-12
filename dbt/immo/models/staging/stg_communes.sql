@@ -29,6 +29,12 @@ select
     l.loyer_m2_appart_3p_plus,
     l.loyer_m2_maison,
     l.loyer_m2_appartement_fiabilite,
-    l.loyer_m2_maison_fiabilite
+    l.loyer_m2_maison_fiabilite,
+    l.loyer_m2_appartement_bas,
+    l.loyer_m2_appartement_haut,
+    l.loyer_m2_appartement_nb_annonces,
+    l.loyer_m2_maison_bas,
+    l.loyer_m2_maison_haut,
+    l.loyer_m2_maison_nb_annonces
 from insee i
 left join loyers l using (code_commune)

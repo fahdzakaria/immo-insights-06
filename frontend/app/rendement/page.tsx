@@ -16,12 +16,15 @@ export default function PageRendement() {
   const [typeBien, setTypeBien] = useState<TypeBien>("appartement");
   const [rendementMin, setRendementMin] = useState(0);
   const [prixMax, setPrixMax] = useState(10000);
+  // Par défaut : seulement les loyers mesurés localement (les autres donnent des rendements irréalistes)
+  const [loyerFiable, setLoyerFiable] = useState(true);
 
   const { data, erreur } = useApi<{ total: number; resultats: Rendement[] }>("/api/v1/rendement", {
     departement: "06",
     type_bien: typeBien,
     rendement_min: rendementMin || undefined,
     prix_m2_max: prixMax < 10000 ? prixMax : undefined,
+    loyer_fiable: loyerFiable || undefined,
     limit: 500,
   });
 
@@ -32,7 +35,7 @@ export default function PageRendement() {
       <TitreSection
         sur="Rendement locatif"
         titre="Où le loyer rembourse le mieux l'achat"
-        sousTitre="Rendement brut = loyer de référence × 12 ÷ prix d'achat au m². Loyers : carte officielle 2025."
+        sousTitre="Rendement brut = loyer de référence × 12 ÷ prix d'achat au m². Loyers : carte officielle 2025, loyers d'annonce charges comprises — le rendement réel hors charges est plus bas."
       />
       <div className="glass mb-6 flex flex-wrap items-end gap-6 px-5 py-4">
         <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
@@ -45,6 +48,15 @@ export default function PageRendement() {
                    min={1000} max={10000} pas={250}
                    format={(v) => (v >= 10000 ? "sans limite" : euro(v))} />
         </div>
+        <button
+          onClick={() => setLoyerFiable((v) => !v)}
+          aria-pressed={loyerFiable}
+          title="Loyer prédit à l'échelle de la commune (assez d'annonces locales) et au moins 20 ventes. Décoché : inclut les communes au loyer extrapolé d'une zone plus large."
+          className={`label-mono cursor-pointer border border-ink px-4 py-2 transition-colors ${
+            loyerFiable ? "bg-ink !text-bg" : "hover:bg-ink/5"}`}
+        >
+          {loyerFiable ? "✓ " : ""}Loyers fiables seulement
+        </button>
         <span className="ml-auto text-sm text-muted">{lignes.length} communes</span>
       </div>
 
@@ -101,18 +113,31 @@ export default function PageRendement() {
                     <tr key={r.code_commune} className="border-t border-line transition-colors hover:bg-accent/5">
                       <td className="px-3 py-2">
                         {r.nom_commune}
-                        {r.loyer_fiabilite !== "commune" && (
-                          <span title="Loyer estimé à une maille plus large que la commune" className="ml-1 text-warn">*</span>
+                        {!r.rendement_fiable && (
+                          <span title="Loyer extrapolé d'une zone plus large que la commune, ou moins de 20 ventes" className="ml-1 text-warn">*</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right text-muted">{euro(r.prix_m2_median)}</td>
                       <td className="px-3 py-2 text-right text-muted">{r.loyer_m2 ? `${r.loyer_m2} €` : "—"}</td>
-                      <td className="px-3 py-2 text-right font-bold text-good">{r.rendement_brut_pct} %</td>
+                      <td className="px-3 py-2 text-right font-bold text-good"
+                          title={r.rendement_bas_pct != null && r.rendement_haut_pct != null
+                            ? `Fourchette selon l'intervalle de prédiction du loyer : ${r.rendement_bas_pct} % à ${r.rendement_haut_pct} %`
+                            : undefined}>
+                        {r.rendement_brut_pct} %
+                        {r.rendement_bas_pct != null && r.rendement_haut_pct != null && (
+                          <div className="text-[11px] font-normal text-muted">
+                            {r.rendement_bas_pct}–{r.rendement_haut_pct}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="px-3 py-2 text-xs text-muted">* loyer estimé à la maille intercommunale.</p>
+              <p className="px-3 py-2 text-xs text-muted">
+                * loyer extrapolé d'une zone plus large que la commune (trop peu d'annonces locales) ou moins de 20 ventes : rendement peu fiable.
+                Sous chaque rendement : fourchette selon l'intervalle de prédiction du loyer.
+              </p>
             </div>
           </Reveal>
         </div>

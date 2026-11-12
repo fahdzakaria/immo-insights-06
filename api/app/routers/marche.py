@@ -95,14 +95,14 @@ def _impact_dpe(departement, type_bien):
         params.append(type_bien)
     return {"resultats": db.query(
         f"""SELECT type_bien, etiquette_dpe, nb_ventes, prix_m2_median,
-                   ecart_vs_marche_pct, conso_ep_m2_mediane
+                   ecart_vs_marche_pct, ecart_ic95_pct, fiable, conso_ep_m2_mediane
             FROM mart_impact_dpe WHERE {' AND '.join(filtres)}
             ORDER BY type_bien, etiquette_dpe""",
         params,
     )}
 
 
-@router.get("/dpe/impact", summary="Décote/surcote énergétique par étiquette (à marché local neutralisé)")
+@router.get("/dpe/impact", summary="Écart de prix par étiquette DPE vs marché local, avec intervalle de confiance")
 def impact_dpe(departement: str = DEP,
                type_bien: Literal["appartement", "maison"] | None = None):
     return _impact_dpe(departement, type_bien)

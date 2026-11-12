@@ -36,6 +36,9 @@ models:
         tests: [unique, not_null]
       - name: prix_m2_median
         tests: [not_null]
+      - name: rendement_fiable
+        description: Loyer prédit à l'échelle de la commune ET au moins 20 ventes sur 24 mois
+        tests: [not_null]
 
   - name: mart_impact_dpe
     description: Décote/surcote énergétique par département × type × étiquette
@@ -47,6 +50,12 @@ models:
           - not_null
           - accepted_values:
               values: [A, B, C, D, E, F, G]
+      - name: fiable
+        description: Au moins 100 ventes au DPE non ambigu ET écart distinct de zéro (appliqué par l'estimateur)
+        tests: [not_null]
+      - name: ecart_ic95_pct
+        description: Demi-largeur de l'intervalle de confiance à 95 % de l'écart médian
+        tests: [not_null]
 
   - name: mart_score_investissement
     description: Score composite 0-100 par commune × type de bien (≥ 20 ventes/24 mois)
@@ -54,4 +63,6 @@ models:
       - name: commune_type_id
         tests: [unique, not_null]
       - name: score_investissement
+        tests: [not_null]
+      - name: rendement_fiable
         tests: [not_null]

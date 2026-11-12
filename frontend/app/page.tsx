@@ -185,7 +185,7 @@ export default function PageMarche() {
         <TitreSection
           sur="02 — Énergie"
           titre="Ce que l'étiquette DPE fait au prix"
-          sousTitre="Écart médian vs le marché local (même commune, même année, même type de bien) : l'effet DPE isolé de l'effet localisation."
+          sousTitre="Écart médian de prix par rapport à un logement comparable (même commune, même année, même type de bien, DPE connu). Écart observé, pas l'effet de l'énergie seule : les étiquettes A et B sont surtout des logements récents."
         />
         <Reveal>
           <div className="glass px-4 py-6 sm:px-6">
@@ -203,13 +203,14 @@ export default function PageMarche() {
                     itemStyle={{ color: "#e8e4d6" }}
                     labelStyle={{ color: "#8a8574" }}
                     formatter={(v: number, _n, item) => [
-                      `${v > 0 ? "+" : ""}${v} % vs marché local (${nombre(item.payload.nb_ventes)} ventes)`,
+                      `${v > 0 ? "+" : ""}${v} % ± ${item.payload.ecart_ic95_pct} vs logement comparable (${nombre(item.payload.nb_ventes)} ventes${item.payload.fiable ? "" : ", écart non significatif"})`,
                       `Étiquette ${item.payload.etiquette_dpe}`,
                     ]}
                   />
                   <Bar dataKey="ecart_vs_marche_pct" radius={0}>
                     {dpe.resultats.map((d) => (
-                      <Cell key={d.etiquette_dpe} fill={DPE_COULEURS[d.etiquette_dpe]} stroke="#0c0c0a" strokeWidth={0.5} />
+                      <Cell key={d.etiquette_dpe} fill={DPE_COULEURS[d.etiquette_dpe]} stroke="#0c0c0a" strokeWidth={0.5}
+                            fillOpacity={d.fiable ? 1 : 0.35} />
                     ))}
                   </Bar>
                 </BarChart>

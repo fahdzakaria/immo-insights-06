@@ -86,8 +86,16 @@ export interface Rendement {
   nb_ventes_24m: number;
   prix_m2_median: number;
   loyer_m2: number | null;
+  /** Bornes de l'intervalle de prédiction du loyer (carte des loyers). */
+  loyer_m2_bas: number | null;
+  loyer_m2_haut: number | null;
   loyer_fiabilite: string | null;
+  loyer_nb_annonces: number | null;
   rendement_brut_pct: number | null;
+  rendement_bas_pct: number | null;
+  rendement_haut_pct: number | null;
+  /** Loyer prédit à l'échelle de la commune ET ≥ 20 ventes sur 24 mois. */
+  rendement_fiable: boolean;
 }
 
 export interface ImpactDpe {
@@ -96,6 +104,10 @@ export interface ImpactDpe {
   nb_ventes: number;
   prix_m2_median: number;
   ecart_vs_marche_pct: number;
+  /** Demi-largeur de l'intervalle de confiance à 95 % de l'écart. */
+  ecart_ic95_pct: number;
+  /** Assez de ventes et écart distinct de zéro : appliqué par l'estimateur. */
+  fiable: boolean;
   conso_ep_m2_mediane: number;
 }
 
@@ -106,6 +118,8 @@ export interface Opportunite {
   nb_ventes_24m: number;
   prix_m2_median: number;
   rendement_brut_pct: number | null;
+  loyer_fiabilite: string | null;
+  rendement_fiable: boolean;
   evolution_3ans_pct: number | null;
   evolution_population_pct: number | null;
   pois_moyens_500m: number | null;
@@ -126,17 +140,19 @@ export interface Estimation {
   etiquette_dpe: string | null;
   prix_m2_reference: number;
   ajustement_dpe_pct: number;
+  ajustement_dpe_applique: boolean;
+  ajustement_dpe_motif: string | null;
   prix_estime: number;
   fourchette_basse: number;
   fourchette_haute: number;
-  fiabilite: { nb_ventes_24m: number; methode: string };
+  fiabilite: { nb_ventes_24m: number; niveau: "faible" | "correcte" | "bonne"; methode: string };
 }
 
 export interface DetailCommune {
   code_commune: string;
   nom_commune: string;
   prix: CommunePrix[];
-  rendement: Pick<Rendement, "type_bien" | "loyer_m2" | "loyer_fiabilite" | "rendement_brut_pct">[];
+  rendement: Pick<Rendement, "type_bien" | "loyer_m2" | "loyer_fiabilite" | "rendement_brut_pct" | "rendement_fiable">[];
   scores: (Pick<
     Opportunite,
     | "type_bien" | "score_investissement" | "score_prix" | "score_rendement"
@@ -147,7 +163,7 @@ export interface DetailCommune {
 /** GET d'un endpoint (valeurs null/undefined omises) — local ou HTTP selon SOURCE_DONNEES. */
 export async function apiGet<T>(
   path: string,
-  params: Record<string, string | number | undefined | null> = {},
+  params: Record<string, string | number | boolean | undefined | null> = {},
 ): Promise<T> {
   if (SOURCE_DONNEES === "static") return apiLocale(path, params) as Promise<T>;
   const url = new URL(path, API_URL);

@@ -117,7 +117,12 @@ export default function PageComparateur() {
                       <div><dt className="text-muted">Évol. 1 an</dt>
                         <dd className={`font-semibold ${evolClass(appart?.evolution_1an_pct)}`}>{pct(appart?.evolution_1an_pct)}</dd></div>
                       <div><dt className="text-muted">Rendement</dt>
-                        <dd className="font-semibold">{pct(rdt?.rendement_brut_pct, false)}</dd></div>
+                        <dd className="font-semibold">
+                          {pct(rdt?.rendement_brut_pct, false)}
+                          {rdt?.rendement_brut_pct != null && !rdt.rendement_fiable && (
+                            <span title="Loyer extrapolé d'une zone plus large que la commune, ou moins de 20 ventes : rendement peu fiable" className="ml-0.5 text-warn">*</span>
+                          )}
+                        </dd></div>
                       <div><dt className="text-muted">Ventes 24 m</dt>
                         <dd className="font-semibold">{nombre(appart?.nb_ventes_24m)}</dd></div>
                     </dl>

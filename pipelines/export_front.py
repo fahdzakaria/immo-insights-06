@@ -36,7 +36,7 @@ MARTS = [
 
 
 def front_data_dir() -> Path:
-    """Dossier de sortie : FRONT_DATA_DIR (monté sur frontend/public/data dans Docker)."""
+    """Dossier de sortie : FRONT_DATA_DIR (frontend/public/data, via le montage de frontend/public)."""
     return Path(os.environ.get("FRONT_DATA_DIR", DATA_DIR / "front"))
 
 

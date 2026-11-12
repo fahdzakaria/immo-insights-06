@@ -47,7 +47,7 @@ la date réelle du dernier export (`public/data/meta.json`).
 docker compose up -d            # l'API locale sert les mêmes marts gold
 make export-front
 cd frontend && node scripts/compare-local-api.ts
-# ✔ 1798 requêtes identiques entre l'API et la version locale
+# ✔ 1813 requêtes identiques entre l'API et la version locale
 ```
 
 Le script rejoue toutes les vues du site (tous les filtres, toutes les

@@ -36,8 +36,8 @@ x-airflow-common: &airflow-common
     DBT_PROJECT_DIR: /opt/airflow/dbt/immo
     # Départements traités par le pipeline (paramétrable, ex: "06,83,13")
     DEPARTEMENTS: ${DEPARTEMENTS:-06}
-    # Export JSON des marts pour le front statique (monté sur frontend/public/data)
-    FRONT_DATA_DIR: /opt/airflow/front_data
+    # Export JSON des marts pour le front statique (écrit dans frontend/public/data)
+    FRONT_DATA_DIR: /opt/airflow/front_public/data
     # Années DVF : vide = de DVF_ANNEE_DEBUT (2021) à l'année en cours
     DVF_ANNEES: ${DVF_ANNEES:-}
     DVF_ANNEE_DEBUT: ${DVF_ANNEE_DEBUT:-2021}
@@ -50,7 +50,9 @@ x-airflow-common: &airflow-common
     - ./api:/opt/airflow/api
     - ./dbt:/opt/airflow/dbt
     - ./data:/data
-    - ./frontend/public/data:/opt/airflow/front_data
+    # On monte le dossier PARENT : git supprime et recrée public/data lors d'un
+    # changement de branche, ce qui casserait un montage direct de ce dossier.
+    - ./frontend/public:/opt/airflow/front_public
     - airflow-logs:/opt/airflow/logs
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:

@@ -87,6 +87,14 @@ for (const type_bien of T) {
     }
   }
 }
+// Filtre « loyers fiables seulement » (vue Opportunités par défaut)
+for (const type_bien of T) {
+  for (const score_min of [0, 50, 65]) {
+    cas.push({ chemin: "/api/v1/opportunites", params: { departement: "06", type_bien, score_min, loyer_fiable: true, limit: 30 }, tri: "score_investissement" });
+  }
+  cas.push({ chemin: "/api/v1/opportunites", params: { type_bien, loyer_fiable: false, limit: 200 }, tri: "score_investissement" });
+  cas.push({ chemin: "/api/v1/rendement", params: { type_bien, loyer_fiable: true, limit: 500 }, tri: "rendement_brut_pct" });
+}
 // Tris, ordres, pagination, recherche, bornes de prix et de population
 for (const [tri, colonne] of [["prix_m2", "prix_m2_median"], ["ventes", "nb_ventes_total"], ["evolution", "evolution_1an_pct"], ["population", "population"], ["nom", "nom_commune"]]) {
   for (const ordre of ["asc", "desc"]) {

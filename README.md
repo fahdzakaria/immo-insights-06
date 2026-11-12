@@ -12,7 +12,7 @@ dashboard 3D interactif, avec un pipeline data industriel au milieu.
 ![DuckDB](https://img.shields.io/badge/DuckDB-1.x-FFF000?logo=duckdb&logoColor=black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-46_pytest_·_32_dbt-45d08c)
+![Tests](https://img.shields.io/badge/tests-78_pytest_·_38_dbt-45d08c)
 
 ![Page d'accueil — maquette 3D des prix par commune](docs/captures/accueil.png)
 
@@ -37,7 +37,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 └────────────────────────┘   └───────────────────────────────────────────┘   Next.js 15 + R3F
                                     ▲                                          (Vercel)
                 Airflow (quotidien 06:00, retries, alerting webhook)    En local : FastAPI +
-                dbt run + 32 tests qualité bloquants                    DuckDB in-memory
+                dbt run + 38 tests qualité bloquants                    DuckDB in-memory
 ```
 
 - **Orchestration** : un DAG Airflow `bronze (5 sources //) → silver → dbt run → dbt test → dbt docs + export JSON du site`,
@@ -45,7 +45,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 - **Déploiement** : les marts gold ne pèsent que **152 Ko** → exportés en JSON en fin de DAG et
   embarqués dans le site (Vercel), qui rejoue la logique de l'API dans le navigateur. Zéro
   serveur à héberger ; l'API FastAPI reste servie par le stack Docker local. Équivalence
-  vérifiée sur 1 798 requêtes ([docs/deploiement.md](docs/deploiement.md)).
+  vérifiée sur 1 813 requêtes ([docs/deploiement.md](docs/deploiement.md)).
 
 ## Choix techniques (et pourquoi)
 
@@ -55,7 +55,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 | **Idempotence par manifestes + TTL de fraîcheur** | les sources publiques changent sous des URLs stables — sans TTL le bronze resterait figé (DPE/OSM : 7 j, DVF : 15 j, INSEE/loyers : 30 j) |
 | **DuckDB** plutôt que Postgres | analytique local ultra-rapide, zéro service à administrer ; l'API lit les Parquet via des vues in-memory → **aucun conflit de verrou** avec le pipeline qui écrit |
 | **dbt pour le gold uniquement** | le procédural (géocodage BAN, KDTree spatial) reste en Python testé ; la modélisation SQL déclarative + tests + docs va à dbt |
-| **Rapprochement DPE↔vente géographique** | DVF n'a pas d'identifiant de logement : match par position (<50 m) + type + surface ±10 %, taux de couverture tracé (34 %) |
+| **Rapprochement DPE↔vente géographique** | DVF n'a pas d'identifiant de logement : match par position (<50 m) + type + surface ±10 % + DPE antérieur à la vente ; couverture 48 %, rapprochements ambigus (même immeuble, étiquettes différentes) exclus des analyses |
 | **Marts pré-agrégés + WHERE en base + cache TTL** | aucun endpoint ne scanne les 128 600 ventes ; réponses en 3-45 ms ; le client ne reçoit jamais plus de 500 lignes |
 | **3D InstancedMesh + raycasting manuel** | ~160 barres = 1 draw call ; survol interactif fiable ; three.js chargé uniquement sur la landing |
 
@@ -70,7 +70,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 3. **Tendances** — 20 trimestres de prix et volumes, zoom par commune
 4. **Comparateur** — 3 communes face à face + radar des 6 composantes du score
 5. **Rendement** — nuage prix/rendement + classement filtrable
-6. **Estimateur** — méthode transparente : médiane locale 24 mois × ajustement DPE départemental
+6. **Estimateur** — méthode transparente : médiane locale 24 mois × écart DPE départemental (appliqué seulement s'il est statistiquement fiable), refus sous 5 ventes
 7. **Opportunités** — score d'investissement 0-100 (6 composantes pondérées, centiles départementaux)
 
 Design « terminal éditorial » : charbon, ambre, Fraunces/Plex Mono, animations Framer Motion —
@@ -79,9 +79,10 @@ la 3D et les animations ne pénalisent jamais la donnée (bundles par route : 14
 ## Qualité des données
 
 - **9 règles de nettoyage documentées** ([docs/silver.md](docs/silver.md)) : 458 841 lignes DVF → 128 600 ventes fiables, entonnoir tracé dans les manifestes
-- **32 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
-- **46 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
+- **38 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
+- **78 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
 - **Garde-fous statistiques** : rendement calculé à ≥ 5 ventes/24 mois, score à ≥ 20 ventes — les tests ont réellement attrapé un village à 1 vente donnant 45 % de rendement fictif
+- **Fiabilité affichée, pas cachée** : fourchette de rendement et drapeau « loyer mesuré localement », intervalle de confiance sur l'écart DPE, niveau de fiabilité de chaque estimation ([docs/gold.md](docs/gold.md))
 
 ## Lancer en local
 
@@ -116,11 +117,11 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt/immo && dbt b
 ├── pipelines/
 │   ├── ingestion/            # 1 module par source, idempotent + TTL fraîcheur
 │   └── silver/               # nettoyage, géocodage BAN (cache), enrichissement KDTree
-├── dbt/immo/                 # staging → intermediate → 5 marts + 32 tests
+├── dbt/immo/                 # staging → intermediate → 5 marts + 38 tests
 ├── api/                      # FastAPI, 10 endpoints filtrables + Dockerfile.deploy
 ├── frontend/                 # Next.js 15, R3F, MapLibre, Recharts, Framer Motion
 ├── scripts/deploy_api_hf.sh  # déploiement de l'API sur un hébergeur Docker
-├── tests/                    # 46 tests pytest
+├── tests/                    # 78 tests pytest
 └── docs/                     # une doc par couche + déploiement
 ```
 

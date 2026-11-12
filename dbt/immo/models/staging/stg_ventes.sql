@@ -34,5 +34,7 @@ select
     etiquette_dpe,
     etiquette_ges,
     conso_ep_m2,
-    dpe_distance_m
+    dpe_distance_m,
+    dpe_nb_candidats,
+    dpe_ambigu
 from {{ source('silver', 'ventes_enrichies') }}

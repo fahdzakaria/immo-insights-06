@@ -89,13 +89,15 @@ class TestGeocodage:
 class TestEnrichissement:
     def test_projection_metres_ordres_de_grandeur(self):
         # 0.01° de latitude ≈ 1 112 m
-        xy = enrichissement.projeter_metres(pd.Series([43.70, 43.71]), pd.Series([7.26, 7.26]))
+        lat0 = enrichissement.latitude_reference(pd.Series([43.70, 43.71]))
+        xy = enrichissement.projeter_metres(pd.Series([43.70, 43.71]), pd.Series([7.26, 7.26]), lat0)
         assert np.linalg.norm(xy[1] - xy[0]) == pytest.approx(1112, rel=0.01)
 
     def _ventes_geo(self):
         return pd.DataFrame({
             "type_bien": ["appartement"], "surface_bati": [50.0],
             "latitude": [43.7000], "longitude": [7.2600],
+            "date_mutation": pd.to_datetime(["2024-06-15"]),
         })
 
     def test_compter_pois_rayon(self):
@@ -110,6 +112,21 @@ class TestEnrichissement:
         assert out.loc[0, "nb_commerce_500m"] == 1
         assert out.loc[0, "nb_transport_500m"] == 0
 
+    def test_compter_pois_insensible_aux_pois_lointains(self):
+        """Non-régression du bug de projection côté POI.
+
+        Une école à ~450 m à l'est de la vente doit être comptée même si le jeu
+        de POI contient un point très au nord. Avant, la latitude de référence
+        était calculée séparément pour les ventes et pour les POI : ce point
+        lointain décalait toutes les écoles de plus de 2 km vers l'ouest."""
+        pois = pd.DataFrame({
+            "categorie": ["education", "education"],
+            "latitude": [43.7000, 44.2000],     # même latitude que la vente ; ~55 km au nord
+            "longitude": [7.2656, 7.2600],      # ~450 m à l'est
+        })
+        out = enrichissement.compter_pois(self._ventes_geo(), pois)
+        assert out.loc[0, "nb_education_500m"] == 1
+
     def test_rapprochement_dpe(self):
         dpe = pd.DataFrame({
             "type_batiment": ["appartement", "appartement", "maison"],
@@ -119,21 +136,81 @@ class TestEnrichissement:
             "etiquette_dpe": ["C", "F", "G"],
             "etiquette_ges": ["C", "F", "G"],
             "conso_5_usages_par_m2_ep": [120.0, 300.0, 400.0],
+            "date_etablissement_dpe": pd.to_datetime(["2024-03-01"] * 3),
         })
         out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
         # Seul le 1er candidat matche : bon type ET surface à ±10 % (51 vs 50)
         assert out.loc[0, "etiquette_dpe"] == "C"
         assert out.loc[0, "dpe_distance_m"] < enrichissement.RAYON_DPE_M
+        assert out.loc[0, "dpe_nb_candidats"] == 1 and out.loc[0, "dpe_ambigu"] == False  # noqa: E712
         assert taux == 1.0
+
+    def _dpe(self, **colonnes):
+        base = {
+            "type_batiment": ["appartement"], "surface_habitable_logement": [50.0],
+            "latitude": [43.70005], "longitude": [7.26],
+            "etiquette_dpe": ["D"], "etiquette_ges": ["D"], "conso_5_usages_par_m2_ep": [200.0],
+            "date_etablissement_dpe": pd.to_datetime(["2024-03-01"]),
+        }
+        base.update(colonnes)
+        return pd.DataFrame(base)
+
+    def test_rapprochement_insensible_aux_autres_points(self):
+        """Régression du bug de projection : un DPE lointain dans le jeu de
+        données ne doit pas déplacer les autres (avant : décalage de 200-700 m,
+        donc aucun rapprochement possible à 50 m)."""
+        dpe = self._dpe(
+            type_batiment=["appartement"] * 2, surface_habitable_logement=[50.0, 50.0],
+            latitude=[43.70005, 44.20], longitude=[7.26, 6.70],   # le 2e est à ~70 km
+            etiquette_dpe=["D", "A"], etiquette_ges=["D", "A"], conso_5_usages_par_m2_ep=[200.0, 40.0],
+            date_etablissement_dpe=pd.to_datetime(["2024-03-01"] * 2),
+        )
+        out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert out.loc[0, "etiquette_dpe"] == "D"
+        assert out.loc[0, "dpe_distance_m"] == pytest.approx(5.6, abs=0.5)
+
+    def test_dpe_posterieur_a_la_vente_ecarte(self):
+        """Un DPE refait un an après la vente décrit un autre état du logement."""
+        dpe = self._dpe(date_etablissement_dpe=pd.to_datetime(["2025-06-15"]))
+        out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert pd.isna(out.loc[0, "etiquette_dpe"]) and taux == 0.0
+        # Tolérance de 30 jours : un DPE enregistré juste après l'acte reste accepté
+        dpe = self._dpe(date_etablissement_dpe=pd.to_datetime(["2024-07-01"]))
+        out, _ = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert out.loc[0, "etiquette_dpe"] == "D"
+
+    def test_dpe_sans_date_ecarte(self):
+        dpe = self._dpe(date_etablissement_dpe=pd.to_datetime([None]))
+        out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert taux == 0.0
+
+    def test_candidats_aux_etiquettes_differentes_marques_ambigus(self):
+        """Même immeuble, même surface, étiquettes D et G : impossible de trancher."""
+        dpe = self._dpe(
+            type_batiment=["appartement"] * 2, surface_habitable_logement=[50.0, 50.5],
+            latitude=[43.70005, 43.70006], longitude=[7.26, 7.26],
+            etiquette_dpe=["D", "G"], etiquette_ges=["D", "G"], conso_5_usages_par_m2_ep=[200.0, 450.0],
+            date_etablissement_dpe=pd.to_datetime(["2024-03-01", "2023-01-10"]),
+        )
+        out, _ = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert out.loc[0, "etiquette_dpe"] == "D"          # le plus proche reste affiché
+        assert out.loc[0, "dpe_nb_candidats"] == 2
+        assert out.loc[0, "dpe_ambigu"] == True            # noqa: E712 — exclu des analyses par étiquette
+        # Mêmes étiquettes → pas d'ambiguïté
+        dpe["etiquette_dpe"] = ["D", "D"]
+        out, _ = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
+        assert out.loc[0, "dpe_ambigu"] == False           # noqa: E712
 
     def test_rapprochement_dpe_sans_candidat(self):
         dpe = pd.DataFrame({
             "type_batiment": ["appartement"], "surface_habitable_logement": [80.0],  # surface trop éloignée
             "latitude": [43.70005], "longitude": [7.26],
             "etiquette_dpe": ["D"], "etiquette_ges": ["D"], "conso_5_usages_par_m2_ep": [200.0],
+            "date_etablissement_dpe": pd.to_datetime(["2024-03-01"]),
         })
         out, taux = enrichissement.rapprocher_dpe(self._ventes_geo(), dpe)
         assert pd.isna(out.loc[0, "etiquette_dpe"])
+        assert out.loc[0, "dpe_nb_candidats"] == 0 and pd.isna(out.loc[0, "dpe_ambigu"])
         assert taux == 0.0
 
 

@@ -21,3 +21,8 @@ models:
       # Parquet dans data/gold/ ET exposé comme vue dans le warehouse DuckDB.
       # On obtient la couche gold du data lake + un warehouse requêtable.
       +materialized: external
+
+vars:
+  # Seuils de fiabilité partagés par les marts (documentés dans docs/gold.md)
+  seuil_ventes_fiable: 20   # ventes sur 24 mois pour qu'un rendement soit dit fiable
+  seuil_ventes_dpe: 100     # ventes par étiquette pour appliquer l'écart DPE

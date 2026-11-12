@@ -75,7 +75,7 @@ def detail_commune(code_commune: str):
     if not prix:
         raise HTTPException(404, f"Commune {code_commune} inconnue (aucune vente analysée)")
     rendement = db.query(
-        "SELECT type_bien, loyer_m2, loyer_fiabilite, rendement_brut_pct "
+        "SELECT type_bien, loyer_m2, loyer_fiabilite, rendement_brut_pct, rendement_fiable "
         "FROM mart_rendement_locatif WHERE code_commune = ?", [code_commune])
     score = db.query(
         "SELECT type_bien, score_investissement, score_prix, score_rendement, "

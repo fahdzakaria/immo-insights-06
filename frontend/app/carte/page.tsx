@@ -29,11 +29,13 @@ export default function PageCarte() {
   const { data: prix, erreur } = useApi<{ resultats: CommunePrix[] }>("/api/v1/communes", {
     departement: "06", type_bien: typeBien, limit: 500,
   });
+  // Rendement et score : seulement les communes au loyer mesuré localement
+  // (un loyer extrapolé donne des rendements irréalistes, cf. vue Rendement)
   const { data: rendements } = useApi<{ resultats: Rendement[] }>("/api/v1/rendement", {
-    departement: "06", type_bien: typeBien, limit: 500,
+    departement: "06", type_bien: typeBien, loyer_fiable: true, limit: 500,
   });
   const { data: scores } = useApi<{ resultats: Opportunite[] }>("/api/v1/opportunites", {
-    departement: "06", type_bien: typeBien, limit: 200,
+    departement: "06", type_bien: typeBien, loyer_fiable: true, limit: 200,
   });
 
   const valeurs: ValeurCommune[] = useMemo(() => {
@@ -82,6 +84,8 @@ export default function PageCarte() {
       <p className="label-mono mt-3">
         Couleurs par quantiles — les communes restées éteintes n'ont pas assez de ventes récentes
         (garde-fou : ≥ 5 ventes sur 24 mois).
+        {(metrique === "rendement" || metrique === "score") &&
+          " Rendement et score : seules les communes au loyer mesuré localement (≥ 20 ventes) sont colorées."}
       </p>
     </div>
   );

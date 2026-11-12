@@ -46,12 +46,15 @@ export default function PageOpportunites() {
   const [typeBien, setTypeBien] = useState<TypeBien>("appartement");
   const [scoreMin, setScoreMin] = useState(50);
   const [prixMax, setPrixMax] = useState(10000);
+  // Par défaut on écarte les communes dont le rendement repose sur un loyer extrapolé
+  const [loyerFiable, setLoyerFiable] = useState(true);
 
   const { data, erreur } = useApi<{ resultats: Opportunite[] }>("/api/v1/opportunites", {
     departement: "06",
     type_bien: typeBien,
     score_min: scoreMin,
     prix_m2_max: prixMax < 10000 ? prixMax : undefined,
+    loyer_fiable: loyerFiable || undefined,
     limit: 30,
   });
 
@@ -60,7 +63,7 @@ export default function PageOpportunites() {
       <TitreSection
         sur="Opportunités"
         titre="Où investir dans le 06, selon la donnée"
-        sousTitre="Score 0-100 croisant prix bas, rendement, marché en hausse, démographie, services et tension locative — en centiles départementaux, communes à ≥ 20 ventes/24 mois."
+        sousTitre="Score 0-100 croisant prix bas, rendement, marché en hausse, démographie, services et tension locative — en centiles départementaux, communes à ≥ 20 ventes/24 mois. Le rendement pèse 25 % du score : par défaut, seules les communes dont le loyer est mesuré localement sont affichées."
       />
       <div className="glass mb-8 flex flex-wrap items-end gap-6 px-5 py-4">
         <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
@@ -71,6 +74,15 @@ export default function PageOpportunites() {
           <Curseur label="Prix max €/m²" valeur={prixMax} onChange={setPrixMax} min={1000} max={10000} pas={250}
                    format={(v) => (v >= 10000 ? "sans limite" : euro(v))} />
         </div>
+        <button
+          onClick={() => setLoyerFiable((v) => !v)}
+          aria-pressed={loyerFiable}
+          title="Loyer prédit à l'échelle de la commune (assez d'annonces locales). Décoché : inclut les communes au loyer extrapolé d'une zone plus large."
+          className={`label-mono cursor-pointer border border-ink px-4 py-2 transition-colors ${
+            loyerFiable ? "bg-ink !text-bg" : "hover:bg-ink/5"}`}
+        >
+          {loyerFiable ? "✓ " : ""}Loyers fiables seulement
+        </button>
         <span className="ml-auto text-sm text-muted">{data?.resultats.length ?? "…"} communes</span>
       </div>
 
@@ -78,7 +90,7 @@ export default function PageOpportunites() {
       {!erreur && !data && <Chargement />}
       {data?.resultats.length === 0 && (
         <div className="glass px-6 py-12 text-center text-muted">
-          Aucune commune ne passe ces filtres — baisse le score minimum.
+          Aucune commune ne passe ces filtres — baisse le score minimum{loyerFiable ? " ou décoche « loyers fiables seulement »" : ""}.
         </div>
       )}
 
@@ -99,7 +111,10 @@ export default function PageOpportunites() {
                   <span className="mr-2 text-muted">#{i + 1}</span>{o.nom_commune}
                 </div>
                 <div className="text-sm text-muted">
-                  {euro(o.prix_m2_median)}/m² · rendement {pct(o.rendement_brut_pct, false)} ·{" "}
+                  {euro(o.prix_m2_median)}/m² · rendement {pct(o.rendement_brut_pct, false)}
+                  {!o.rendement_fiable && (
+                    <span title="Loyer extrapolé d'une zone plus large que la commune : rendement peu fiable" className="text-warn">*</span>
+                  )} ·{" "}
                   {nombre(o.nb_ventes_24m)} ventes 24 m
                 </div>
               </div>

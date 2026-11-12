@@ -4,6 +4,7 @@
 
 import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { SOURCE_DONNEES } from "@/lib/api";
 
 /** Apparition douce au scroll (une seule fois). */
 export function Reveal({
@@ -87,10 +88,17 @@ export function Chargement({ texte = "Chargement des données…" }: { texte?: s
   );
 }
 
-export function Erreur({ message }: { message: string }) {
+/**
+ * Message d'erreur. `technique` (défaut) = échec de chargement des données :
+ * on ajoute un conseil adapté à la source. `technique={false}` = message
+ * métier (ex. « pas assez de ventes »), affiché tel quel.
+ */
+export function Erreur({ message, technique = true }: { message: string; technique?: boolean }) {
+  const conseil =
+    SOURCE_DONNEES === "api" ? "vérifie que l’API tourne (docker compose up)" : "recharge la page";
   return (
     <div className="glass border-bad/40 my-8 px-5 py-4 text-sm text-bad">
-      ⚠ {message} — vérifie que l’API tourne (docker compose up).
+      ⚠ {message}{technique && ` — ${conseil}.`}
     </div>
   );
 }

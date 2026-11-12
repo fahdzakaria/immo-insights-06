@@ -41,7 +41,11 @@ export default function PageEstimateur() {
       }));
     } catch (e) {
       setResultat(null);
-      setErreur("Pas assez de ventes récentes dans cette commune pour ce type de bien.");
+      setErreur(
+        (e as { statut?: number }).statut === 404 || /\b404\b/.test((e as Error).message)
+          ? "Moins de 5 ventes récentes dans cette commune pour ce type de bien : pas d'estimation fiable possible."
+          : `Estimation impossible pour le moment (${(e as Error).message}).`,
+      );
     } finally {
       setEnCours(false);
     }
@@ -52,7 +56,7 @@ export default function PageEstimateur() {
       <TitreSection
         sur="Estimateur"
         titre="Combien vaut ce bien ?"
-        sousTitre="Méthode 100 % transparente : médiane locale des ventes réelles sur 24 mois, ajustée de la décote DPE observée — pas de boîte noire."
+        sousTitre="Méthode 100 % transparente : médiane locale des ventes réelles sur 24 mois, ajustée de l'écart DPE observé quand il est statistiquement fiable — pas de boîte noire."
       />
       <div className="grid gap-6 lg:grid-cols-2">
         {/* -------- Formulaire -------- */}
@@ -161,20 +165,32 @@ export default function PageEstimateur() {
                   </div>
                   <div className="glass px-4 py-3">
                     <dt className="text-muted">Ajustement DPE</dt>
-                    <dd className={`font-semibold ${resultat.ajustement_dpe_pct < 0 ? "text-bad" : "text-good"}`}>
-                      {resultat.ajustement_dpe_pct > 0 ? "+" : ""}{resultat.ajustement_dpe_pct} %
-                    </dd>
+                    {resultat.etiquette_dpe && !resultat.ajustement_dpe_applique ? (
+                      <dd className="font-semibold text-warn">non appliqué</dd>
+                    ) : (
+                      <dd className={`font-semibold ${resultat.ajustement_dpe_pct < 0 ? "text-bad" : "text-good"}`}>
+                        {resultat.ajustement_dpe_pct > 0 ? "+" : ""}{resultat.ajustement_dpe_pct} %
+                      </dd>
+                    )}
                   </div>
                 </dl>
                 <p className="text-xs text-muted">
-                  Fiabilité : {nombre(resultat.fiabilite.nb_ventes_24m)} ventes comparables sur 24 mois.
-                  Estimation indicative issue de données publiques, pas une expertise.
+                  Fiabilité{" "}
+                  <span className={`font-semibold ${
+                    resultat.fiabilite.niveau === "bonne" ? "text-good"
+                      : resultat.fiabilite.niveau === "correcte" ? "text-ink" : "text-warn"}`}>
+                    {resultat.fiabilite.niveau}
+                  </span>{" "}
+                  : {nombre(resultat.fiabilite.nb_ventes_24m)} ventes comparables sur 24 mois
+                  {resultat.fiabilite.niveau === "faible" && " — peu de ventes, fourchette à prendre avec prudence"}.
+                  {resultat.ajustement_dpe_motif && ` Étiquette ${resultat.etiquette_dpe} : ${resultat.ajustement_dpe_motif}.`}
+                  {" "}Estimation indicative issue de données publiques, pas une expertise.
                 </p>
               </motion.div>
             ) : (
               <motion.div key="vide" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                           className="glass flex h-full min-h-[320px] items-center justify-center px-6 text-center text-muted">
-                {erreur ? <Erreur message={erreur} /> : "Renseigne le bien à gauche, l'estimation apparaît ici."}
+                {erreur ? <Erreur message={erreur} technique={false} /> : "Renseigne le bien à gauche, l'estimation apparaît ici."}
               </motion.div>
             )}
           </AnimatePresence>
