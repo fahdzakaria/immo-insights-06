@@ -28,6 +28,9 @@ jobs:
       - name: Construire l'image Airflow du projet
         run: docker build -t immo-airflow ./airflow
 
+      # `airflow db migrate` crée la base SQLite locale requise par DagBag ; sa sortie
+      # n'est affichée qu'en cas d'échec. Attention : le script passé à `bash -c` est
+      # entre apostrophes, il ne doit donc contenir AUCUNE apostrophe.
       - name: Tests pytest et validation dbt
         run: |
           docker run --rm --user root \
@@ -42,7 +45,6 @@ jobs:
             --entrypoint bash immo-airflow -c '
               set -euo pipefail
               cd /opt/airflow
-              # Base SQLite locale, requise par DagBag ; sortie masquée sauf en cas d'échec
               airflow db migrate >/tmp/migrate.log 2>&1 || { tail -40 /tmp/migrate.log; exit 1; }
               python -m pytest tests/ -q -p no:cacheprovider
               cd dbt/immo && dbt parse --profiles-dir . --no-partial-parse
