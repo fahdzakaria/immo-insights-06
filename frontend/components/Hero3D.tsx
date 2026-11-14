@@ -16,6 +16,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { CommunePrix } from "@/lib/api";
+import { SEUIL_VENTES_AFFICHAGE } from "@/lib/api";
 
 export interface SurvolCommune {
   nom: string;
@@ -57,7 +58,11 @@ function Barres({
   const { gl, camera } = useThree();
 
   const barres: Barre[] = useMemo(() => {
-    const geo = communes.filter((c) => c.latitude && c.longitude && c.prix_m2_median);
+    // Pas de barre pour une commune à moins de 5 ventes : son « prix » serait
+    // celui d'une ou deux ventes isolées (et fausserait l'échelle des hauteurs).
+    const geo = communes.filter(
+      (c) => c.latitude && c.longitude && c.prix_m2_median && (c.nb_ventes_24m ?? 0) >= SEUIL_VENTES_AFFICHAGE,
+    );
     const lons = geo.map((c) => c.longitude!);
     const lats = geo.map((c) => c.latitude!);
     const pMax = Math.max(...geo.map((c) => c.prix_m2_median!));

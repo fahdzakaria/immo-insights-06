@@ -96,8 +96,8 @@ export default function CarteChoroplethe({
           .setLngLat(e.lngLat)
           .setHTML(
             `<div style="font-weight:700;margin-bottom:2px">${p.nom}</div>
-             <div style="color:#ffb020;font-weight:600;font-variant-numeric:tabular-nums">${brut == null ? "Pas assez de ventes" : p.affichage}</div>
-             ${p.nbVentes && p.nbVentes !== "null" ? `<div style="color:#8a8574;font-size:12px">${nombre(Number(p.nbVentes))} ventes sur 24 mois</div>` : ""}`,
+             <div style="color:#ffb020;font-weight:600;font-variant-numeric:tabular-nums">${brut == null ? "Trop peu de ventes pour un chiffre fiable" : p.affichage}</div>
+             ${p.nbVentes && p.nbVentes !== "null" ? `<div style="color:#8a8574;font-size:12px">${nombre(Number(p.nbVentes))} vente${Number(p.nbVentes) > 1 ? "s" : ""} sur 24 mois</div>` : ""}`,
           )
           .addTo(map);
       });

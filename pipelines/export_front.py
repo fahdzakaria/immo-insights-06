@@ -79,6 +79,36 @@ def _ecrire(texte: str, chemin: Path) -> None:
     tmp.replace(chemin)
 
 
+# Deux exports de la même donnée peuvent différer de 0,000001 sur une moyenne
+# (latitude/longitude : l'agrégation parallèle de DuckDB n'additionne pas dans
+# le même ordre, et l'arrondi à 6 décimales bascule parfois). Ce n'est pas un
+# changement : on tolère un écart juste au-dessus d'une unité d'arrondi.
+TOLERANCE_FLOTTANT = 1.5e-6
+
+
+def _meme_donnee(chemin: Path, table: dict) -> bool:
+    """Le JSON déjà exporté contient-il la même donnée, au bruit flottant près ?"""
+    if not chemin.exists():
+        return False
+    try:
+        ancien = json.loads(chemin.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    if not isinstance(ancien, dict):
+        return False
+    if ancien.get("colonnes") != table["colonnes"] or len(ancien.get("lignes", [])) != len(table["lignes"]):
+        return False
+    for ligne_a, ligne_b in zip(ancien["lignes"], table["lignes"]):
+        for a, b in zip(ligne_a, ligne_b):
+            if a == b:
+                continue
+            nombres = (isinstance(a, (int, float)) and isinstance(b, (int, float))
+                       and not isinstance(a, bool) and not isinstance(b, bool))
+            if not nombres or abs(a - b) > TOLERANCE_FLOTTANT:
+                return False
+    return True
+
+
 def exporter(gold_dir: Path | None = None, out_dir: Path | None = None) -> Path:
     """Écrit les JSON du front ; échoue si un mart manque ou est vide."""
     gold_dir = Path(gold_dir or GOLD_DIR)
@@ -101,9 +131,7 @@ def exporter(gold_dir: Path | None = None, out_dir: Path | None = None) -> Path:
     # du pied de page reste celle du dernier vrai changement, et git reste propre.
     textes = {mart: _serialiser(table) for mart, table in tables.items()}
     inchange = (out_dir / "meta.json").exists() and all(
-        (out_dir / f"{mart}.json").exists()
-        and (out_dir / f"{mart}.json").read_text(encoding="utf-8") == texte
-        for mart, texte in textes.items()
+        _meme_donnee(out_dir / f"{mart}.json", table) for mart, table in tables.items()
     )
     if inchange:
         logger.info("Export front : marts inchangés, rien à réécrire dans %s", out_dir)

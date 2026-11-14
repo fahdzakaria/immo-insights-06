@@ -12,7 +12,8 @@ dashboard 3D interactif, avec un pipeline data industriel au milieu.
 ![DuckDB](https://img.shields.io/badge/DuckDB-1.x-FFF000?logo=duckdb&logoColor=black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-78_pytest_·_38_dbt-45d08c)
+[![CI](https://github.com/fahdzakaria/immo-insights-06/actions/workflows/ci.yml/badge.svg)](https://github.com/fahdzakaria/immo-insights-06/actions/workflows/ci.yml)
+![Tests](https://img.shields.io/badge/tests-87_pytest_·_38_dbt-45d08c)
 
 ![Page d'accueil — maquette 3D des prix par commune](docs/captures/accueil.png)
 
@@ -36,7 +37,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 │ OSM Overpass            │   │ GOLD     5 marts dbt (parquet + DuckDB)   │            ▼
 └────────────────────────┘   └───────────────────────────────────────────┘   Next.js 15 + R3F
                                     ▲                                          (Vercel)
-                Airflow (quotidien 06:00, retries, alerting webhook)    En local : FastAPI +
+                Airflow (quotidien 06:00, retries, alertes Telegram)    En local : FastAPI +
                 dbt run + 38 tests qualité bloquants                    DuckDB in-memory
 ```
 
@@ -80,7 +81,8 @@ la 3D et les animations ne pénalisent jamais la donnée (bundles par route : 14
 
 - **9 règles de nettoyage documentées** ([docs/silver.md](docs/silver.md)) : 458 841 lignes DVF → 128 600 ventes fiables, entonnoir tracé dans les manifestes
 - **38 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
-- **78 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
+- **87 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
+- **Intégration continue** (GitHub Actions) : pytest dans l'image Airflow du projet, validation dbt, typage et compilation du site à chaque push
 - **Garde-fous statistiques** : rendement calculé à ≥ 5 ventes/24 mois, score à ≥ 20 ventes — les tests ont réellement attrapé un village à 1 vente donnant 45 % de rendement fictif
 - **Fiabilité affichée, pas cachée** : fourchette de rendement et drapeau « loyer mesuré localement », intervalle de confiance sur l'écart DPE, niveau de fiabilité de chaque estimation ([docs/gold.md](docs/gold.md))
 
@@ -121,7 +123,7 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt/immo && dbt b
 ├── api/                      # FastAPI, 10 endpoints filtrables + Dockerfile.deploy
 ├── frontend/                 # Next.js 15, R3F, MapLibre, Recharts, Framer Motion
 ├── scripts/deploy_api_hf.sh  # déploiement de l'API sur un hébergeur Docker
-├── tests/                    # 78 tests pytest
+├── tests/                    # 87 tests pytest
 └── docs/                     # une doc par couche + déploiement
 ```
 

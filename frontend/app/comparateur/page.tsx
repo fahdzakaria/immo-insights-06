@@ -9,7 +9,7 @@ import {
 import { ChampRecherche } from "@/components/filtres";
 import { Erreur, Reveal, TitreSection } from "@/components/ui";
 import type { CommunePrix, DetailCommune } from "@/lib/api";
-import { apiGet } from "@/lib/api";
+import { apiGet, SEUIL_VENTES_AFFICHAGE } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { euro, evolClass, nombre, pct } from "@/lib/format";
 
@@ -113,7 +113,12 @@ export default function PageComparateur() {
                     </div>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                       <div><dt className="text-muted">Prix médian</dt>
-                        <dd className="font-semibold">{appart?.prix_m2_median ? euro(appart.prix_m2_median) + "/m²" : "—"}</dd></div>
+                        <dd className="font-semibold">
+                          {appart?.prix_m2_median ? euro(appart.prix_m2_median) + "/m²" : "—"}
+                          {appart?.prix_m2_median != null && (appart.nb_ventes_24m ?? 0) < SEUIL_VENTES_AFFICHAGE && (
+                            <span title={`Moins de ${SEUIL_VENTES_AFFICHAGE} ventes sur 24 mois : ce prix repose sur une ou deux ventes isolées`} className="ml-0.5 text-warn">*</span>
+                          )}
+                        </dd></div>
                       <div><dt className="text-muted">Évol. 1 an</dt>
                         <dd className={`font-semibold ${evolClass(appart?.evolution_1an_pct)}`}>{pct(appart?.evolution_1an_pct)}</dd></div>
                       <div><dt className="text-muted">Rendement</dt>

@@ -8,8 +8,9 @@ Idempotence : le bronze saute les sources déjà ingérées (manifestes) ; le
 silver et dbt recalculent tout (déterministes). Relancer le DAG est donc
 toujours sans danger.
 
-Alerte : chaque échec de tâche appelle `alerte_echec` — log ERROR + POST
-JSON vers ALERT_WEBHOOK_URL si définie (format compatible Slack/Discord).
+Alerte : chaque échec définitif de tâche appelle `alerte_echec` — log ERROR +
+webhook Slack/Discord (ALERT_WEBHOOK_URL) et/ou Telegram (TELEGRAM_BOT_TOKEN,
+TELEGRAM_CHAT_ID). Voir pipelines/alertes.py.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
-from pipelines import config, export_front
+from pipelines import alertes, config, export_front
 from pipelines.ingestion import dpe, dvf, insee, loyers, osm
 from pipelines.silver import dpe_clean, dvf_clean, enrichissement, osm_clean, referentiels
 
@@ -36,22 +37,13 @@ DBT_CMD = f"cd {DBT_DIR} && dbt {{}} --profiles-dir ."
 
 
 def alerte_echec(context) -> None:
-    """Callback d'échec : log + webhook optionnel (Slack/Discord-compatible)."""
+    """Callback d'échec définitif d'une tâche : log + webhook et/ou Telegram (pipelines.alertes)."""
     ti = context["task_instance"]
-    message = (
-        f"❌ Pipeline immo : échec de `{ti.task_id}` "
+    alertes.envoyer_alerte(
+        f"❌ Pipeline immo : échec de {ti.task_id} "
         f"(run {context['run_id']}, tentative {ti.try_number})\n"
         f"Log : {ti.log_url}"
     )
-    logger.error(message)
-    webhook = os.environ.get("ALERT_WEBHOOK_URL")
-    if webhook:
-        import requests
-
-        try:
-            requests.post(webhook, json={"text": message, "content": message}, timeout=10)
-        except requests.RequestException:
-            logger.exception("Envoi de l'alerte webhook impossible")
 
 
 default_args = {

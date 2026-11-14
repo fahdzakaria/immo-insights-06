@@ -79,3 +79,38 @@ def test_donnee_inchangee_ne_reecrit_rien(tmp_path):
     df.to_parquet(gold / "mart_impact_dpe.parquet", index=False)
     export_front.exporter(gold, out)
     assert "MARQUEUR" not in (out / "meta.json").read_text()
+
+
+def test_bruit_flottant_ne_compte_pas_comme_un_changement(tmp_path):
+    """Une latitude qui bouge de 0,000001 (bruit d'agrégation) ne réécrit rien ;
+    un vrai changement, même petit (0,01 point de %), si."""
+    gold = _gold(tmp_path)
+    out = export_front.exporter(gold, tmp_path / "front")
+    meta = out / "meta.json"
+    meta.write_text(meta.read_text().replace("2025Q4", "MARQUEUR"))
+
+    def modifier(colonne, valeur):
+        df = pd.read_parquet(gold / "mart_impact_dpe.parquet")
+        df.loc[0, colonne] = valeur
+        df.to_parquet(gold / "mart_impact_dpe.parquet", index=False)
+
+    modifier("latitude", 43.700001)          # +0,000001 : bruit
+    export_front.exporter(gold, out)
+    assert "MARQUEUR" in meta.read_text()
+
+    modifier("latitude", 43.70001)           # +0,00001 : vrai déplacement
+    export_front.exporter(gold, out)
+    assert "MARQUEUR" not in meta.read_text()
+
+
+def test_changement_de_texte_ou_de_null_detecte(tmp_path):
+    gold = _gold(tmp_path)
+    out = export_front.exporter(gold, tmp_path / "front")
+    table = export_front.lire_mart(gold / "mart_impact_dpe.parquet")
+    assert export_front._meme_donnee(out / "mart_impact_dpe.json", table)
+    table["lignes"][0][0] = "06030"                      # un code commune change
+    assert not export_front._meme_donnee(out / "mart_impact_dpe.json", table)
+    table = export_front.lire_mart(gold / "mart_impact_dpe.parquet")
+    table["lignes"][0][2] = 4000                         # null → valeur
+    assert not export_front._meme_donnee(out / "mart_impact_dpe.json", table)
+    assert not export_front._meme_donnee(out / "absent.json", table)

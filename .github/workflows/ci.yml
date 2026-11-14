@@ -1,0 +1,69 @@
+# Intégration continue : rejoue à chaque push ce que `make tests` fait en local.
+#  - pipeline : tests pytest dans l'image Airflow du projet (même environnement
+#    que le DAG : pandas, duckdb, dbt, fastapi) + validation du projet dbt ;
+#  - site : typage TypeScript et compilation Next.js.
+# Les données (data/) ne sont pas versionnées : les tests sont hors-ligne et
+# travaillent sur des jeux synthétiques.
+name: CI
+
+on:
+  push:          # toutes les branches
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    name: Pipeline (pytest + dbt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construire l'image Airflow du projet
+        run: docker build -t immo-airflow ./airflow
+
+      - name: Tests pytest et validation dbt
+        run: |
+          docker run --rm --user root \
+            -e PYTHONPATH=/opt/airflow \
+            -e AIRFLOW__CORE__LOAD_EXAMPLES=false \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD/pipelines:/opt/airflow/pipelines:ro" \
+            -v "$PWD/tests:/opt/airflow/tests:ro" \
+            -v "$PWD/api:/opt/airflow/api:ro" \
+            -v "$PWD/airflow/dags:/opt/airflow/dags:ro" \
+            -v "$PWD/dbt:/opt/airflow/dbt" \
+            --entrypoint bash immo-airflow -c '
+              set -euo pipefail
+              cd /opt/airflow
+              # Base SQLite locale, requise par DagBag ; sortie masquée sauf en cas d'échec
+              airflow db migrate >/tmp/migrate.log 2>&1 || { tail -40 /tmp/migrate.log; exit 1; }
+              python -m pytest tests/ -q -p no:cacheprovider
+              cd dbt/immo && dbt parse --profiles-dir . --no-partial-parse
+            '
+
+  site:
+    name: Site (typage + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typage TypeScript
+        run: npx tsc --noEmit
+      - name: Compilation du site (marts JSON embarqués)
+        run: npm run build

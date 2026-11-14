@@ -1,6 +1,6 @@
 # Raccourcis développeur — tout passe par docker compose.
 
-.PHONY: up down restart logs ps airflow-shell reset export-front publier
+.PHONY: up down restart logs ps airflow-shell reset export-front publier test-alerte tests
 
 up:            ## Build + démarre tout le stack
 	docker compose up -d --build
@@ -27,3 +27,11 @@ export-front:  ## Exporte les marts gold en JSON dans frontend/public/data
 
 publier: export-front  ## Publie le site (marts embarqués) sur Vercel
 	cd frontend && npx vercel deploy --prod --yes --scope fahdzakarias-projects
+
+test-alerte:   ## Envoie un message de test sur les canaux d'alerte configurés dans .env
+	docker compose exec -T airflow-scheduler bash -c "cd /opt/airflow && python -m pipelines.alertes"
+
+tests:         ## Tests pytest + dbt (dans le conteneur) puis typage du front
+	docker compose exec -T airflow-scheduler bash -c "cd /opt/airflow && python -m pytest tests/ -q"
+	docker compose exec -T airflow-scheduler bash -c "cd /opt/airflow/dbt/immo && dbt build --profiles-dir ."
+	cd frontend && npx tsc --noEmit

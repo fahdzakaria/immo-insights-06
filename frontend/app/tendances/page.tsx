@@ -9,6 +9,7 @@ import {
 import { ChampRecherche, ToggleTypeBien } from "@/components/filtres";
 import { Chargement, Erreur, Reveal, TitreSection } from "@/components/ui";
 import type { CommunePrix, PointTendance, TypeBien } from "@/lib/api";
+import { SEUIL_VENTES_AFFICHAGE } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { euro, nombre } from "@/lib/format";
 
@@ -41,7 +42,12 @@ export default function PageTendances() {
     code_commune: communeChoisie?.code_commune,
   });
 
-  const serie = data?.resultats ?? [];
+  // Un prix médian trimestriel sur moins de 5 ventes n'est pas un prix de marché :
+  // le point est retiré de la courbe (le volume, lui, reste affiché).
+  const serie = (data?.resultats ?? []).map((p) =>
+    p.nb_ventes < SEUIL_VENTES_AFFICHAGE ? { ...p, prix_m2_median: null } : p,
+  );
+  const nbTrimestresMasques = serie.filter((p) => p.prix_m2_median == null).length;
   const perimetre = communeChoisie ? communeChoisie.nom_commune : "Alpes-Maritimes";
 
   return (
@@ -88,12 +94,19 @@ export default function PageTendances() {
                          tickFormatter={(v: number) => `${Math.round(v / 100) / 10}k`} />
                   <Tooltip
                     contentStyle={TOOLTIP_STYLE}
-                    formatter={(v: number) => [euro(v) + "/m²", "Prix médian"]}
+                    formatter={(v) => [typeof v === "number" ? euro(v) + "/m²" : "trop peu de ventes", "Prix médian"]}
                   />
                   <Area type="monotone" dataKey="prix_m2_median" stroke="#ffb020" strokeWidth={2.5}
-                        fill="url(#gradPrix)" animationDuration={700} />
+                        fill="url(#gradPrix)" animationDuration={700} connectNulls={false} />
                 </AreaChart>
               </ResponsiveContainer>
+              {nbTrimestresMasques > 0 && (
+                <p className="label-mono mt-3">
+                  {nbTrimestresMasques === serie.length
+                    ? `Moins de ${SEUIL_VENTES_AFFICHAGE} ventes par trimestre dans cette commune : pas de prix trimestriel fiable.`
+                    : `${nbTrimestresMasques} trimestre${nbTrimestresMasques > 1 ? "s" : ""} sans point : moins de ${SEUIL_VENTES_AFFICHAGE} ventes, pas de prix fiable.`}
+                </p>
+              )}
             </div>
           </Reveal>
           <Reveal delay={0.08}>

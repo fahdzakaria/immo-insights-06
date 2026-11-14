@@ -8,6 +8,7 @@ import type { Metrique, ValeurCommune } from "@/components/CarteChoroplethe";
 import { ToggleTypeBien } from "@/components/filtres";
 import { Chargement, Erreur, TitreSection } from "@/components/ui";
 import type { CommunePrix, Opportunite, Rendement, TypeBien } from "@/lib/api";
+import { SEUIL_VENTES_AFFICHAGE } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 
 const Carte = dynamic(() => import("@/components/CarteChoroplethe"), {
@@ -47,7 +48,10 @@ export default function PageCarte() {
       nom: c.nom_commune,
       nbVentes: c.nb_ventes_24m,
       valeur:
-        metrique === "prix_m2" ? c.prix_m2_median
+        // Garde-fou commun à toutes les métriques : pas de couleur sous 5 ventes
+        // (une « médiane » sur 1 ou 2 ventes n'est pas un prix de marché)
+        (c.nb_ventes_24m ?? 0) < SEUIL_VENTES_AFFICHAGE ? null
+        : metrique === "prix_m2" ? c.prix_m2_median
         : metrique === "evolution" ? c.evolution_1an_pct
         : metrique === "rendement" ? rParCode.get(c.code_commune)?.rendement_brut_pct ?? null
         : sParCode.get(c.code_commune)?.score_investissement ?? null,
@@ -82,8 +86,8 @@ export default function PageCarte() {
         <Carte valeurs={valeurs} metrique={metrique} />
       </div>
       <p className="label-mono mt-3">
-        Couleurs par quantiles — les communes restées éteintes n'ont pas assez de ventes récentes
-        (garde-fou : ≥ 5 ventes sur 24 mois).
+        Couleurs par quantiles — les communes restées éteintes ont moins de {SEUIL_VENTES_AFFICHAGE} ventes
+        sur 24 mois : trop peu pour un prix de marché, quelle que soit la métrique.
         {(metrique === "rendement" || metrique === "score") &&
           " Rendement et score : seules les communes au loyer mesuré localement (≥ 20 ventes) sont colorées."}
       </p>

@@ -43,6 +43,9 @@ x-airflow-common: &airflow-common
     DVF_ANNEE_DEBUT: ${DVF_ANNEE_DEBUT:-2021}
     # Alerte d'échec du DAG : webhook Slack/Discord (vide = log seulement)
     ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    # … et/ou bot Telegram (les deux variables sont nécessaires)
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./pipelines:/opt/airflow/pipelines

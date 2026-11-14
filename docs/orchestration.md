@@ -24,20 +24,28 @@ bronze.loyers ─┘
 | --- | --- | --- |
 | `retries` | 2, backoff exponentiel, 5 min | les APIs publiques (Overpass, ADEME) tombent transitoirement |
 | `max_active_runs` | 1 | DuckDB n'accepte qu'un écrivain à la fois |
-| `on_failure_callback` | log + webhook | voir alerting ci-dessous |
+| `on_failure_callback` | log + webhook / Telegram | voir alerting ci-dessous |
 | `dbt_test` bloquant | après `dbt_run` | des marts qui échouent aux tests qualité ne doivent pas passer inaperçus |
 
 ## Alerting
 
 Chaque échec de tâche (après épuisement des retries) déclenche
-`alerte_echec` : log ERROR structuré + si la variable d'environnement
-`ALERT_WEBHOOK_URL` est définie, POST JSON compatible Slack/Discord
-(`{"text": ..., "content": ...}`) avec la tâche, le run, la tentative et
-l'URL du log. À configurer dans `.env` :
+`alerte_echec`, qui délègue à `pipelines/alertes.py` : log ERROR, puis envoi
+sur chaque canal configuré, avec la tâche, le run, la tentative et l'URL du
+log. Deux canaux, à configurer dans `.env` (aucun n'est obligatoire) :
 
 ```bash
+# Webhook entrant Slack ou Discord
 ALERT_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+# Bot Telegram (créé avec @BotFather) : les deux variables sont nécessaires
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
 ```
+
+Après modification de `.env` : `docker compose up -d` (recrée les conteneurs
+Airflow), puis `make test-alerte` envoie un message de test et indique les
+canaux qui ont répondu. Une alerte qui échoue ne fait jamais échouer le
+pipeline, et le jeton du bot n'est jamais écrit dans les logs.
 
 ## Lancer / tester
 

@@ -102,7 +102,7 @@ export default function PageMarche() {
             className="mt-5 max-w-xl leading-relaxed text-muted"
           >
             {kpis ? nombre(kpis.nb_ventes_total) : "128 600"} ventes réelles, {" "}
-            {kpis?.nb_communes ?? 163} communes. Chaque barre de cette maquette est une commune —
+            {kpis?.nb_communes ?? 163} communes. Chaque barre de cette maquette est une commune (au moins 5 ventes récentes) —
             survole-la : sa hauteur, c'est son prix au m².
           </motion.p>
           <motion.div

@@ -11,6 +11,13 @@ import { creerApiLocale, decompacter, type Ligne } from "./local-api";
 export const SOURCE_DONNEES: "static" | "api" =
   process.env.NEXT_PUBLIC_DATA_SOURCE === "api" ? "api" : "static";
 
+/** En dessous de ce nombre de ventes sur 24 mois, une médiane communale ne
+ *  veut rien dire : carte, maquette 3D et courbes de tendance ne l'affichent pas,
+ *  le comparateur le signale.
+ *  Même valeur que le seuil du rendement (mart dbt) et de l'estimateur
+ *  (SEUIL_VENTES_ESTIMATION dans local-api.ts et investissement.py) : à garder alignés. */
+export const SEUIL_VENTES_AFFICHAGE = 5;
+
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
