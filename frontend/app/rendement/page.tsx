@@ -12,6 +12,9 @@ import type { Rendement, TypeBien } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { euro, nombre } from "@/lib/format";
 
+/** Décimale à la française, sans retour à la ligne possible. */
+const dec = (v: number, n = 2) => v.toLocaleString("fr-FR", { minimumFractionDigits: n, maximumFractionDigits: n });
+
 export default function PageRendement() {
   const [typeBien, setTypeBien] = useState<TypeBien>("appartement");
   const [rendementMin, setRendementMin] = useState(0);
@@ -63,8 +66,8 @@ export default function PageRendement() {
       {!erreur && !data && <Chargement />}
 
       {lignes.length > 0 && (
-        <div className="grid gap-8 lg:grid-cols-5">
-          <Reveal className="lg:col-span-3">
+        <div className="grid gap-8 lg:grid-cols-2">
+          <Reveal>
             <div className="glass h-full px-4 py-6">
               <h3 className="label-mono mb-2 px-2">
                 Prix d'achat vs rendement — chaque point est une commune
@@ -96,38 +99,38 @@ export default function PageRendement() {
             </div>
           </Reveal>
 
-          <Reveal delay={0.08} className="lg:col-span-2">
+          <Reveal delay={0.08}>
             <div className="glass max-h-[500px] overflow-auto px-2 py-3">
-              <table className="w-full text-sm">
+              <table className="w-full whitespace-nowrap text-sm">
                 <thead className="label-mono sticky top-0 border-b border-line bg-panel text-left">
                   <tr>
-                    <th className="px-3 py-2">Commune</th>
-                    <th className="px-3 py-2 text-right">€/m²</th>
-                    <th className="px-3 py-2 text-right">Loyer</th>
-                    <th className="px-3 py-2 text-right">Rdt</th>
+                    <th className="px-2 py-2">Commune</th>
+                    <th className="px-2 py-2 text-right">€/m²</th>
+                    <th className="px-2 py-2 text-right">Loyer</th>
+                    <th className="px-2 py-2 text-right">Rdt</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lignes.slice(0, 40).map((r) => (
                     <tr key={r.code_commune} className="border-t border-line transition-colors hover:bg-accent/5">
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2">
                         {r.nom_commune}
                         {!r.rendement_fiable && (
                           <span title="Loyer extrapolé d'une zone plus large que la commune, ou moins de 20 ventes" className="ml-1 text-warn">*</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right text-muted">{euro(r.prix_m2_median)}</td>
-                      <td className="px-3 py-2 text-right text-muted">{r.loyer_m2 ? `${r.loyer_m2} €` : "—"}</td>
-                      <td className="px-3 py-2 text-right font-bold text-good"
+                      <td className="px-2 py-2 text-right text-muted tabular">{euro(r.prix_m2_median)}</td>
+                      <td className="px-2 py-2 text-right text-muted tabular">{r.loyer_m2 ? `${dec(r.loyer_m2)} €` : "—"}</td>
+                      <td className="px-2 py-2 text-right font-semibold text-good tabular"
                           title={r.rendement_bas_pct != null && r.rendement_haut_pct != null
                             ? `Fourchette selon l'intervalle de prédiction du loyer : ${r.rendement_bas_pct} % à ${r.rendement_haut_pct} %`
                             : undefined}>
-                        {r.rendement_brut_pct} %
                         {r.rendement_bas_pct != null && r.rendement_haut_pct != null && (
-                          <div className="text-[11px] font-normal text-muted">
-                            {r.rendement_bas_pct}–{r.rendement_haut_pct}
-                          </div>
+                          <span className="mr-2 text-[11px] font-normal text-muted">
+                            {dec(r.rendement_bas_pct, 1)}–{dec(r.rendement_haut_pct, 1)}
+                          </span>
                         )}
+                        {r.rendement_brut_pct != null ? `${dec(r.rendement_brut_pct)} %` : "—"}
                       </td>
                     </tr>
                   ))}
@@ -135,7 +138,7 @@ export default function PageRendement() {
               </table>
               <p className="px-3 py-2 text-xs text-muted">
                 * loyer extrapolé d'une zone plus large que la commune (trop peu d'annonces locales) ou moins de 20 ventes : rendement peu fiable.
-                Sous chaque rendement : fourchette selon l'intervalle de prédiction du loyer.
+                En gris devant chaque rendement : fourchette selon l'intervalle de prédiction du loyer.
               </p>
             </div>
           </Reveal>
