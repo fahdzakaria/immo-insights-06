@@ -104,6 +104,10 @@ export default function CarteChoroplethe({
   // Initialisation unique de la carte
   useEffect(() => {
     if (!conteneur.current || carte.current) return;
+    // Contours lancés tout de suite, en parallèle du fond de carte (avant :
+    // téléchargés seulement après l'événement `load`, l'un après l'autre)
+    const contours = fetch("/geo/communes-06.geojson").then((r) => r.json() as Promise<GeoJSON.FeatureCollection>);
+    contours.catch(() => {}); // évite un rejet « non géré » si la carte est démontée avant `load`
     const map = new maplibregl.Map({
       container: conteneur.current,
       style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -272,7 +276,9 @@ export default function CarteChoroplethe({
     };
 
     map.on("load", async () => {
-      const geo = (await (await fetch("/geo/communes-06.geojson")).json()) as GeoJSON.FeatureCollection;
+      const geo = await contours;
+      // Carte démontée pendant l'attente (navigation, StrictMode)
+      if (carte.current !== map) return;
       geojson.current = geo;
       map.addSource("communes", { type: "geojson", data: geo });
       map.addLayer({
