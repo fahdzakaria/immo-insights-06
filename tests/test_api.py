@@ -77,6 +77,25 @@ def _gold_fixture(tmp_path):
         "score_investissement": [59.0, 62.0],
     }).to_parquet(tmp_path / "mart_score_investissement.parquet")
 
+    # Quartiers : 3 à Nice (dont un sous le seuil → prix NULL), 1 à Cannes
+    pd.DataFrame({
+        "quartier_type_id": ["060880401_appartement", "060880902_appartement", "060880903_appartement",
+                             "060290111_appartement"],
+        "code_iris": ["060880401", "060880902", "060880903", "060290111"],
+        "nom_iris": ["Mont Boron", "Ariane-Monzie", "Ariane-Nord", "Croisette-Palm-Beach"],
+        "type_iris": ["H"] * 4, "code_commune": ["06088", "06088", "06088", "06029"],
+        "nom_commune": ["Nice", "Nice", "Nice", "Cannes"], "code_departement": ["06"] * 4,
+        "type_bien": ["appartement"] * 4, "nb_ventes_total": [300, 90, 6, 800],
+        "nb_ventes_24m": [147, 12, 3, 346], "fiable": [True, False, False, True],
+        "prix_m2_median": [10184.0, 1622.0, None, 10672.0], "prix_m2_p25": [8000.0, 1300.0, None, 8500.0],
+        "prix_m2_p75": [12500.0, 1900.0, None, 13900.0], "prix_median": [600000.0, 90000.0, None, 700000.0],
+        "surface_mediane": [60.0, 58.0, None, 62.0], "evolution_1an_pct": [2.1, None, None, 4.0],
+        "evolution_3ans_pct": [9.0, None, None, 23.0],
+        "prix_m2_median_commune": [4600.0, 4600.0, 4600.0, 5400.0],
+        "ecart_commune_pct": [121.4, -64.7, None, 97.6],
+        "latitude": [43.69, 43.74, 43.75, 43.54], "longitude": [7.30, 7.31, 7.31, 7.03],
+    }).to_parquet(tmp_path / "mart_prix_m2_par_quartier.parquet")
+
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory, monkeypatch_module=None):
@@ -94,7 +113,7 @@ def client(tmp_path_factory, monkeypatch_module=None):
 def test_health(client):
     body = client.get("/health").json()
     assert body["status"] == "ok"
-    assert len(body["marts_disponibles"]) == 5
+    assert len(body["marts_disponibles"]) == 6
 
 
 def test_communes_filtre_prix(client):
@@ -212,3 +231,82 @@ def test_kpis(client):
     body = client.get("/api/v1/kpis", params={"departement": "06"}).json()
     assert body["nb_ventes_total"] == 5000
     assert body["rendement_brut_median"] == pytest.approx(4.94)
+
+
+# --- Maille quartier ---
+
+def test_quartiers_d_une_commune_tries_par_prix(client):
+    r = client.get("/api/v1/quartiers", params={"code_commune": "06088", "tri": "prix_m2", "ordre": "asc"})
+    body = r.json()
+    assert body["total"] == 3
+    # NULLS LAST : le quartier sans prix ferme la liste, quel que soit l'ordre
+    assert [q["nom_iris"] for q in body["resultats"]] == ["Ariane-Monzie", "Mont Boron", "Ariane-Nord"]
+
+
+def test_quartier_sous_le_seuil_present_mais_sans_prix(client):
+    body = client.get("/api/v1/quartiers", params={"code_commune": "06088"}).json()
+    nord = next(q for q in body["resultats"] if q["nom_iris"] == "Ariane-Nord")
+    assert nord["nb_ventes_24m"] == 3 and nord["prix_m2_median"] is None and nord["fiable"] is False
+
+
+def test_quartiers_filtre_fiable_et_departement(client):
+    body = client.get("/api/v1/quartiers", params={"fiable": "true"}).json()
+    assert {q["nom_iris"] for q in body["resultats"]} == {"Mont Boron", "Croisette-Palm-Beach"}
+    assert client.get("/api/v1/quartiers", params={"departement": "83"}).json()["total"] == 0
+    assert client.get("/api/v1/quartiers", params={"code_commune": "06050"}).json()["resultats"] == []
+
+
+def test_quartiers_parametres_invalides(client):
+    assert client.get("/api/v1/quartiers", params={"code_commune": "Nice"}).status_code == 422
+    assert client.get("/api/v1/quartiers", params={"tri": "prix; DROP TABLE"}).status_code == 422
+
+
+# --- Estimation au quartier ---
+
+def test_estimation_au_quartier(client):
+    """Mont Boron : 147 ventes → médiane et quartiles du quartier, pas ceux de Nice."""
+    body = client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "060880401", "etiquette_dpe": "C"}).json()
+    assert body["maille"] == "quartier" and body["maille_motif"] is None
+    assert body["nom_iris"] == "Mont Boron" and body["prix_m2_reference"] == 10184.0
+    # 50 m² × 10 184 €/m² × (1 + 0,7 %) = 512 764,4 → 512 764
+    assert body["prix_estime"] == 512764
+    assert body["fourchette_basse"] == round(50 * 8000 * 1.007)
+    assert body["fiabilite"]["nb_ventes_24m"] == 147 and body["fiabilite"]["niveau"] == "bonne"
+    assert "quartier IRIS" in body["fiabilite"]["methode"]
+
+
+def test_estimation_quartier_peu_fourni_fiabilite_du_quartier(client):
+    """Ariane-Monzie : 12 ventes → prix du quartier, mais fiabilité faible (pas celle de Nice)."""
+    body = client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "060880902"}).json()
+    assert body["maille"] == "quartier" and body["prix_estime"] == 81100
+    assert body["fiabilite"]["niveau"] == "faible" and body["fiabilite"]["nb_ventes_24m"] == 12
+
+
+def test_estimation_quartier_sous_le_seuil_retombe_sur_la_commune(client):
+    body = client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "060880903"}).json()
+    assert body["maille"] == "commune" and body["nom_iris"] == "Ariane-Nord"
+    assert "référence de la commune" in body["maille_motif"]
+    assert body["prix_estime"] == 230000                      # 50 × 4600 (Nice)
+    assert body["fiabilite"]["nb_ventes_24m"] == 400
+
+
+def test_estimation_sans_quartier_inchangee(client):
+    body = client.get("/api/v1/estimation", params={"code_commune": "06088", "surface": 50}).json()
+    assert body["maille"] == "commune" and body["code_iris"] is None and body["maille_motif"] is None
+    assert body["prix_estime"] == 230000
+
+
+def test_estimation_quartier_incoherent_ou_inconnu(client):
+    # Quartier de Cannes demandé pour Nice
+    assert client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "060290111"}).status_code == 422
+    assert client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "060889999"}).status_code == 404
+    assert client.get("/api/v1/estimation", params={
+        "code_commune": "06088", "surface": 50, "code_iris": "Mont Boron"}).status_code == 422
+    # Quartier de Nice demandé pour Coursegoules (3 ventes) : l'incohérence prime sur le seuil
+    assert client.get("/api/v1/estimation", params={
+        "code_commune": "06050", "surface": 50, "code_iris": "060880401"}).status_code == 422

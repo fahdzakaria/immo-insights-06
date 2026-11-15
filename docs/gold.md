@@ -9,10 +9,11 @@ warehouse `data/warehouse/immo.duckdb`** — le lac et le warehouse restent
 synchrones par construction.
 
 ```
-sources (silver/*.parquet)
-  → staging   : stg_ventes, stg_communes            (vues, typage/renommage)
-  → intermediate : int_prix_commune_annee           (vue, stats réutilisées)
-  → marts     : 5 tables gold                       (parquet + vue)
+sources (silver/*.parquet, bronze/iris)
+  → staging   : stg_ventes, stg_communes, stg_iris  (vues, typage/renommage)
+  → intermediate : int_prix_commune_annee, int_prix_quartier_annee,
+                   int_annee_reference              (vues, stats réutilisées)
+  → marts     : 6 tables gold                       (parquet + vue)
 ```
 
 ```bash
@@ -22,11 +23,12 @@ docker compose exec airflow-scheduler bash -c \
   "cd /opt/airflow/dbt/immo && dbt docs generate --profiles-dir ."
 ```
 
-## Les 5 marts
+## Les 6 marts
 
 | Mart | Grain | Sert |
 | --- | --- | --- |
 | `mart_prix_m2_par_commune` | commune × type_bien | carte choroplèthe, comparateur — médiane/quartiles 24 mois, évolutions 1 an & 3 ans, centroïde |
+| `mart_prix_m2_par_quartier` | quartier IRIS × type_bien (communes découpées en IRIS) | maille quartier — mêmes médiane/quartiles/évolutions qu'à la commune, **aucun chiffre sous 5 ventes/24 mois**, drapeau `fiable` (≥ 20), écart à la médiane communale |
 | `mart_evolution_trimestrielle` | (commune \| département) × trimestre × type_bien | tendances — GROUPING SETS : deux mailles pré-agrégées, le front ne ré-agrège jamais |
 | `mart_rendement_locatif` | commune × type_bien | rendement brut = loyer×12 / prix m² ; calculé seulement si ≥ 5 ventes/24 mois ; fourchette (intervalle de prédiction du loyer) et drapeau `rendement_fiable` |
 | `mart_impact_dpe` | département × type_bien × étiquette | écart de prix **à localisation neutralisée** : chaque vente (DPE non ambigu) comparée à la médiane de sa commune×type×année ; intervalle de confiance à 95 % et drapeau `fiable` |
@@ -61,7 +63,41 @@ docker compose exec airflow-scheduler bash -c \
 - **Estimateur** : pas d'estimation sous 5 ventes/24 mois ; niveau de
   fiabilité faible (< 20), correcte (< 100), bonne.
 
-## Tests (38, tous verts)
+## Maille quartier (`mart_prix_m2_par_quartier`)
+
+Une médiane par commune ne dit rien d'une grande ville : Nice (13 742
+appartements vendus en 24 mois) va de 1 622 €/m² à Ariane-Monzie à
+10 184 €/m² au Mont Boron. Le mart descend donc au quartier IRIS de l'INSEE
+(rattachement vente → quartier fait en silver, voir `docs/silver.md`).
+
+- **Périmètre** : les communes que l'INSEE découpe en plusieurs IRIS
+  (27 communes du 06, 364 quartiers). Les autres n'ont qu'un IRIS, identique
+  à la commune : rien à ajouter.
+- **Grain complet** : tous les quartiers × {appartement, maison} sont présents
+  (728 lignes), même sans vente, pour que la carte puisse les dessiner éteints.
+- **Garde-fous dans la donnée** : sous `seuil_ventes_affichage` (5 ventes sur
+  24 mois) prix, quartiles, évolutions et écart sont NULS — à cette maille
+  les petits effectifs sont la règle, on ne compte pas sur l'interface pour
+  les masquer. `fiable` = au moins `seuil_ventes_fiable` (20) ventes.
+  Évolutions : 5 ventes minimum de chaque côté, comme à la commune.
+- **Repère** : `prix_m2_median_commune` et `ecart_commune_pct` situent le
+  quartier par rapport à sa commune (repère lui-même nul si la commune a
+  moins de 5 ventes).
+- **Fenêtre** : les 2 dernières années complètes (`int_annee_reference`).
+
+Couverture (ventes 2024-2025) : 545 lignes sur 728 ont un prix, 412 sont
+fiables. Appartements : Nice 139 quartiers sur 146, Cannes 31/31, Le Cannet
+17/17, Antibes 24/26. **Limite : les maisons** — en ville elles sont trop
+rares par quartier (Nice 35/146, dont 6 fiables) ; la maille quartier sert
+surtout aux appartements.
+
+Tests : `assert_quartier_garde_fous` (aucun chiffre sous le seuil, drapeau
+aligné, quartiles ordonnés) et `assert_quartiers_coherents_avec_commune`
+(la somme des quartiers ne dépasse jamais la commune et en retrouve au
+moins 90 % dès que plus de 5 ventes manquent — pour ne pas bloquer le DAG
+sur une petite commune où 2 ventes non géolocalisées font 89 %).
+
+## Tests (53, tous verts)
 
 - **Génériques** : `unique`/`not_null` sur toutes les clés, `accepted_values`
   (type_bien, étiquettes A-G, mailles), `relationships` (ventes → communes).

@@ -12,6 +12,7 @@ data/bronze/
 ├── dvf/departement=06/annee=2024/dvf.parquet        # 1 fichier / dept / an
 ├── dpe/departement=06/dpe.parquet                    # 1 fichier / dept
 ├── osm/departement=06/pois.parquet                   # 1 fichier / dept
+├── iris/departement=06/contours.parquet              # contours des quartiers IRIS, 1 fichier / dept
 ├── insee/base_comparateur.parquet (+ _meta)          # national
 └── loyers/{appartement,appartement_1_2p,appartement_3p_plus,maison}.parquet  # national
 ```
@@ -33,7 +34,7 @@ resterait figé au premier téléchargement. Chaque module définit donc un
 | --- | --- | --- |
 | DPE, OSM | 7 j | mises à jour continues |
 | DVF | 15 j | republication ~2×/an (avril, octobre) |
-| INSEE, loyers | 30 j | millésimes annuels |
+| INSEE, loyers, contours IRIS | 30 j | millésimes annuels |
 
 ## Lancer
 
@@ -53,6 +54,7 @@ python -m pipelines.ingestion.run_all --sources dvf,dpe --departements 06,83 --f
 | **DPE** (ADEME) | API data-fair, dataset `dpe03existant` (~15 M lignes) | Filtré côté API par `code_departement_ban`, sélection de 18 colonnes sur 200+, pagination par curseur `after` (10 000 lignes/page). |
 | **INSEE** comparateur | Zip national (`comparateur_csv.zip`, format long Melodi depuis 2026 : une ligne par territoire × année × mesure, pivoté en silver) | Population, médiane du niveau de vie, pauvreté… par commune. Le dictionnaire de variables du zip est aussi conservé. |
 | **Carte des loyers** | 4 CSV nationaux via liens permanents data.gouv (`/datasets/r/{id}`) | Millésime 2025. Tout est lu en texte (décimales à virgule) : parsing en silver. |
+| **Contours IRIS** (IGN / INSEE, « Contours... IRIS® », Licence Ouverte 2.0) | WFS de la Géoplateforme (`data.geopf.fr/wfs/ows`, couche `STATISTICALUNITS.IRIS:contours_iris`), filtré sur le département, GeoJSON WGS84 | Pagination triée par `code_iris` ; refus d'écrire si le nombre reçu diffère de `numberMatched`, si un code est en double ou si le schéma change. Géométrie gardée brute (GeoJSON en texte). 500 IRIS pour le 06, dont 136 communes non découpées (type « Z »). Le millésime servi n'est pas indiqué par le WFS. |
 | **OSM** (Overpass) | Requête QL sur la zone ISO3166-2 du département | 3 catégories : education, transport, commerce. `nwr … out center` pour avoir un centroïde même sur les bâtiments-polygones. Tags bruts conservés en JSON. |
 
 ## Choix techniques

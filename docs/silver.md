@@ -81,6 +81,27 @@ agrégats communaux, pas dans les analyses de proximité).
 > (99-100 % identiques), 650 rapprochements DPE sur 650 retrouvés à moins
 > de 1 m de la distance enregistrée.
 
+4. **Quartier IRIS** (`code_iris`, `nom_iris`) : chaque vente géolocalisée
+   est rattachée au quartier INSEE qui la contient, par point dans polygone
+   (shapely, index STRtree) sur les contours IRIS du bronze
+   (`data/bronze/iris/`, source IGN « Contours... IRIS® », Licence Ouverte
+   2.0). Le test se fait directement en longitude/latitude : ventes et
+   contours sont dans le même repère, aucune projection en mètres n'entre en
+   jeu. Règles :
+   - une vente n'est rattachée qu'à un IRIS de **sa** commune (code INSEE de
+     DVF) ; un point tombé dans le quartier d'une autre commune signale un
+     géocodage douteux → pas de quartier plutôt qu'un quartier faux ;
+   - vente non géolocalisée ou hors de tout contour → `code_iris` vide ;
+   - point posé exactement sur une frontière entre deux quartiers → le plus
+     petit code IRIS (prédicat `intersects`, ordre déterministe) ;
+   - les communes non découpées par l'INSEE forment un seul IRIS (type « Z ») :
+     la colonne y est remplie mais n'apporte rien de plus que la commune.
+
+   Résultat sur le 06 : 99,93 % des ventes ont un quartier ; 10 ventes
+   écartées pour point hors commune (compteurs `taux_rattachement_iris` et
+   `nb_hors_commune` dans le manifeste). Contrôle indépendant : 2 000 ventes
+   tirées au hasard, re-testées une par une contre le polygone de leur quartier.
+
 ## Nettoyage DPE
 
 Étiquettes A→G valides, type appartement/maison uniquement (les DPE
@@ -92,4 +113,6 @@ dédoublonnage par `numero_dpe` (dernier diagnostic conservé).
 `tests/test_silver.py` : chaque règle R1→R8 testée individuellement
 (paramétrée), dédoublonnage, mutations multi-logements, parsing des décimales
 françaises, projection métrique, comptage POI dans le rayon, rapprochement
-DPE (cas nominal + cas sans candidat).
+DPE (cas nominal + cas sans candidat), rattachement au quartier IRIS (cas
+nominal, vente non géolocalisée, point dans une autre commune, contours qui
+se recouvrent, multipolygone).

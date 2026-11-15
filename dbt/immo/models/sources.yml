@@ -22,3 +22,13 @@ sources:
         meta:
           external_location: >-
             read_parquet('{{ env_var('DATA_DIR', '/data') }}/silver/loyers/communes.parquet')
+
+  - name: bronze
+    description: >
+      Référentiels géographiques lus tels qu'ingérés (aucun nettoyage nécessaire).
+    tables:
+      - name: iris_contours
+        description: Contours des quartiers IRIS (IGN/INSEE, Licence Ouverte 2.0) — une ligne par IRIS
+        meta:
+          external_location: >-
+            read_parquet('{{ env_var('DATA_DIR', '/data') }}/bronze/iris/departement=*/contours.parquet', hive_partitioning=true)

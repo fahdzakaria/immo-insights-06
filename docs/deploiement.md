@@ -11,8 +11,10 @@ DAG Airflow (local)                         Vercel
                                                   + lib/local-api.ts (filtrage dans le navigateur)
 ```
 
-Les 5 marts gold pèsent ~150 Ko en Parquet (~570 Ko en JSON, ~90 Ko une fois
-compressés par Vercel). Le site les embarque et rejoue dans le navigateur la
+Les 6 marts gold pèsent ~700 Ko en JSON (~120 Ko une fois compressés par
+Vercel), dont 123 Ko pour les quartiers. Les contours des quartiers IRIS
+(`public/geo/iris-06.geojson`, 778 Ko, ~170 Ko compressés) sont un fichier à
+part, téléchargé seulement quand on zoome sur la carte. Le site les embarque et rejoue dans le navigateur la
 logique des endpoints de l'API (`frontend/lib/local-api.ts`) : **aucun serveur
 à héberger, aucun temps de réveil, aucun point de panne**.
 
@@ -47,7 +49,7 @@ la date réelle du dernier export (`public/data/meta.json`).
 docker compose up -d            # l'API locale sert les mêmes marts gold
 make export-front
 cd frontend && node scripts/compare-local-api.ts
-# ✔ 1813 requêtes identiques entre l'API et la version locale
+# ✔ 2810 requêtes identiques entre l'API et la version locale
 ```
 
 Le script rejoue toutes les vues du site (tous les filtres, toutes les

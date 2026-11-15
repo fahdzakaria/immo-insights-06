@@ -11,7 +11,9 @@ Chaque vente propre reçoit :
     publie pas d'identifiant de logement : le rapprochement est probabiliste.
     Quand plusieurs candidats portent des étiquettes différentes (même
     immeuble), la vente est marquée `dpe_ambigu` et exclue des analyses par
-    étiquette. Taux de couverture et d'ambiguïté tracés dans le manifeste.
+    étiquette. Taux de couverture et d'ambiguïté tracés dans le manifeste ;
+ 4. son QUARTIER (IRIS INSEE) : point dans polygone sur les contours IGN,
+    limité aux IRIS de la commune de la vente. Taux tracé dans le manifeste.
 
 Sortie : data/silver/ventes_enrichies/departement={dep}/ventes.parquet
 """
@@ -21,10 +23,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import shapely
 from scipy.spatial import cKDTree
 
 from pipelines.common import atomic_write_parquet, write_manifest
-from pipelines.config import SILVER_DIR
+from pipelines.config import BRONZE_DIR, SILVER_DIR
 
 logger = logging.getLogger("silver.enrichissement")
 
@@ -151,6 +154,73 @@ def rapprocher_dpe(ventes: pd.DataFrame, dpe: pd.DataFrame) -> tuple[pd.DataFram
     return ventes, taux
 
 
+def rattacher_iris(ventes: pd.DataFrame, contours: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Attache à chaque vente son quartier IRIS (colonnes `code_iris`, `nom_iris`).
+
+    Point dans polygone, directement en longitude/latitude : ventes et contours
+    sont dans le même repère (WGS84) et l'appartenance à un polygone ne dépend
+    pas d'une projection — aucune latitude de référence n'entre en jeu ici.
+
+    Une vente n'est rattachée qu'à un IRIS de SA commune (code INSEE de DVF).
+    Si son point tombe dans le quartier d'une autre commune, c'est que le
+    géocodage est douteux (adresse en limite communale, homonyme de voie) :
+    on préfère ne pas lui donner de quartier plutôt qu'un quartier faux.
+
+    Restent sans quartier (NA) : ventes non géolocalisées, points hors de tout
+    contour de leur commune. Retourne (df, stats) ; stats alimente le manifeste.
+    """
+    ventes = ventes.copy()
+    ventes["code_iris"] = pd.Series(pd.NA, index=ventes.index, dtype="string")
+    ventes["nom_iris"] = pd.Series(pd.NA, index=ventes.index, dtype="string")
+    stats = {"nb_rattachees": 0, "nb_hors_commune": 0, "taux_rattachement_iris": 0.0}
+
+    geo = (ventes["latitude"].notna() & ventes["longitude"].notna()).to_numpy()
+    if not geo.any() or contours.empty:
+        return ventes, stats
+
+    # Tri par code : si deux contours se recouvrent, le plus petit code gagne (déterministe)
+    contours = contours.sort_values("code_iris", ignore_index=True)
+    polygones = shapely.from_geojson(contours["geometrie_geojson"].to_numpy())
+    arbre = shapely.STRtree(polygones)
+
+    positions = np.flatnonzero(geo)
+    points = shapely.points(
+        ventes["longitude"].to_numpy(dtype=float)[positions],
+        ventes["latitude"].to_numpy(dtype=float)[positions],
+    )
+    # « intersects » plutôt que « within » : un point posé exactement sur une
+    # frontière garde un quartier (le plus petit code, voir le tri ci-dessus)
+    i_point, i_poly = arbre.query(points, predicate="intersects")
+
+    commune_vente = ventes["code_commune"].astype("string").to_numpy(dtype=object)[positions[i_point]]
+    commune_iris = contours["code_commune"].astype("string").to_numpy(dtype=object)[i_poly]
+    meme_commune = commune_vente == commune_iris
+
+    # Un point par vente : on garde le premier IRIS (ordre des codes) de sa commune
+    ordre = np.lexsort((i_poly[meme_commune], i_point[meme_commune]))
+    p_ok, poly_ok = i_point[meme_commune][ordre], i_poly[meme_commune][ordre]
+    premier = np.concatenate(([True], p_ok[1:] != p_ok[:-1])) if len(p_ok) else np.array([], dtype=bool)
+    p_ok, poly_ok = p_ok[premier], poly_ok[premier]
+
+    lignes = ventes.index[positions[p_ok]]
+    ventes.loc[lignes, "code_iris"] = contours["code_iris"].to_numpy(dtype=object)[poly_ok]
+    ventes.loc[lignes, "nom_iris"] = contours["nom_iris"].to_numpy(dtype=object)[poly_ok]
+
+    # Points tombés uniquement dans des IRIS d'une AUTRE commune
+    hors = np.setdiff1d(i_point[~meme_commune], p_ok)
+    stats = {
+        "nb_rattachees": int(len(p_ok)),
+        "nb_hors_commune": int(len(hors)),
+        "taux_rattachement_iris": round(len(p_ok) / len(ventes), 4) if len(ventes) else 0.0,
+    }
+    return ventes, stats
+
+
+def lire_contours_iris(dep: str) -> pd.DataFrame:
+    """Contours IRIS bronze du département (ingestion : pipelines/ingestion/iris.py)."""
+    return pd.read_parquet(BRONZE_DIR / "iris" / f"departement={dep}" / "contours.parquet")
+
+
 def build(departements: list[str]) -> list[Path]:
     insee = pd.read_parquet(SILVER_DIR / "insee" / "communes.parquet")
     loyers = pd.read_parquet(SILVER_DIR / "loyers" / "communes.parquet").drop(columns=["nom_commune"])
@@ -180,11 +250,16 @@ def build(departements: list[str]) -> list[Path]:
         logger.info("Enrichissement %s : DPE rapproché pour %.1f%% des ventes, dont %d sans ambiguïté",
                     dep, taux_dpe * 100, nb_non_ambigus)
 
+        # 4. Quartier IRIS
+        ventes, stats_iris = rattacher_iris(ventes, lire_contours_iris(dep))
+        logger.info("Enrichissement %s : quartier IRIS pour %.2f%% des ventes (%d écartées : point hors commune)",
+                    dep, stats_iris["taux_rattachement_iris"] * 100, stats_iris["nb_hors_commune"])
+
         out = SILVER_DIR / "ventes_enrichies" / f"departement={dep}" / "ventes.parquet"
         atomic_write_parquet(ventes, out)
-        write_manifest(out, source=f"silver dvf+insee+loyers+osm+dpe dep={dep}",
+        write_manifest(out, source=f"silver dvf+insee+loyers+osm+dpe+iris dep={dep}",
                        rows=len(ventes), extra={"taux_rapprochement_dpe": round(taux_dpe, 4),
-                              "nb_dpe_non_ambigus": nb_non_ambigus})
+                              "nb_dpe_non_ambigus": nb_non_ambigus, **stats_iris})
         logger.info("Ventes enrichies %s : %d lignes, %d colonnes → %s",
                     dep, len(ventes), ventes.shape[1], out)
         produced.append(out)

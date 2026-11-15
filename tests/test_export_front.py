@@ -9,8 +9,33 @@ import pytest
 from pipelines import export_front
 
 
+QUARTIER = "mart_prix_m2_par_quartier"
+COLONNES = ["code_commune", "trimestre", "prix_m2_median", "latitude", "nb_ventes"]
+
+
+def _contour(code, lon0=7.26):
+    """Un carré de ~1 km, avec du bruit après la 5e décimale et un sommet en double."""
+    return {"code_iris": code, "nom_iris": f"Quartier {code[-2:]}", "code_commune": code[:5],
+            "nom_commune": "Nice" if code.startswith("06088") else "Cannes",
+            "type_iris": "H", "id_ign": None,
+            "geometrie_geojson": json.dumps({"type": "Polygon", "coordinates": [[
+                [lon0, 43.70], [lon0 + 0.0100004, 43.70], [lon0 + 0.0100001, 43.7000002],
+                [lon0 + 0.01, 43.71], [lon0, 43.71], [lon0, 43.70]]]})}
+
+
+@pytest.fixture(autouse=True)
+def bronze(tmp_path, monkeypatch):
+    """Contours IRIS bronze synthétiques : 2 quartiers du mart + 1 hors mart."""
+    dossier = tmp_path / "bronze" / "iris" / "departement=06"
+    dossier.mkdir(parents=True)
+    pd.DataFrame([_contour("060880101"), _contour("060290101", 7.02), _contour("069990101", 7.50)]
+                 ).to_parquet(dossier / "contours.parquet", index=False)
+    monkeypatch.setattr(export_front, "BRONZE_DIR", tmp_path / "bronze")
+    return tmp_path / "bronze"
+
+
 def _gold(tmp_path, vide=None, absent=None):
-    """Écrit 5 mini marts gold en Parquet ; `vide`/`absent` cassent un mart."""
+    """Écrit 6 mini marts gold en Parquet ; `vide`/`absent` cassent un mart."""
     gold = tmp_path / "gold"
     gold.mkdir(parents=True)
     for mart in export_front.MARTS:
@@ -23,6 +48,8 @@ def _gold(tmp_path, vide=None, absent=None):
             "latitude": [43.70000000000001, 43.55], # bruit flottant → arrondi
             "nb_ventes": [13744, 4556],
         })
+        if mart == QUARTIER:  # l'export des contours lit ces deux colonnes
+            df = df.assign(code_iris=["060880101", "060290101"], code_departement="06")
         (df.iloc[0:0] if mart == vide else df).to_parquet(gold / f"{mart}.parquet", index=False)
     return gold
 
@@ -31,7 +58,7 @@ def test_export_ecrit_un_json_par_mart_et_meta(tmp_path):
     out = export_front.exporter(_gold(tmp_path), tmp_path / "front")
     for mart in export_front.MARTS:
         table = json.loads((out / f"{mart}.json").read_text())
-        assert table["colonnes"] == ["code_commune", "trimestre", "prix_m2_median", "latitude", "nb_ventes"]
+        assert table["colonnes"][:5] == COLONNES
         assert len(table["lignes"]) == 2
     meta = json.loads((out / "meta.json").read_text())
     assert meta["premier_trimestre"] == "2021Q1" and meta["dernier_trimestre"] == "2025Q4"
@@ -114,3 +141,67 @@ def test_changement_de_texte_ou_de_null_detecte(tmp_path):
     table["lignes"][0][2] = 4000                         # null → valeur
     assert not export_front._meme_donnee(out / "mart_impact_dpe.json", table)
     assert not export_front._meme_donnee(out / "absent.json", table)
+
+
+# --- Contours des quartiers (public/geo/iris-{dep}.geojson) ---
+
+def test_contours_exportes_pour_les_seuls_quartiers_du_mart(tmp_path):
+    out = export_front.exporter(_gold(tmp_path), tmp_path / "front")
+    geo = json.loads((out.parent / "geo" / "iris-06.geojson").read_text())
+    assert geo["type"] == "FeatureCollection"
+    assert [f["properties"]["code"] for f in geo["features"]] == ["060290101", "060880101"]  # trié, 06999 exclu
+    assert geo["features"][1]["properties"] == {
+        "code": "060880101", "nom": "Quartier 01", "commune": "06088", "nom_commune": "Nice"}
+
+
+def test_contours_alleges_arrondis_sans_doublon():
+    geometrie = json.loads(_contour("060880101")["geometrie_geojson"])
+    anneau = export_front.alleger_geometrie(geometrie)["coordinates"][0]
+    # 5 décimales, et les deux sommets confondus après arrondi n'en font plus qu'un
+    assert anneau == [[7.26, 43.7], [7.27, 43.7], [7.27, 43.71], [7.26, 43.71], [7.26, 43.7]]
+    multi = {"type": "MultiPolygon", "coordinates": [
+        geometrie["coordinates"],
+        [[[7.3, 43.7], [7.3000001, 43.7], [7.3, 43.7000001], [7.3, 43.7]]],  # éclat < 1 m : disparaît
+    ]}
+    assert len(export_front.alleger_geometrie(multi)["coordinates"]) == 1
+
+
+def test_contour_exterieur_degenere_supprime_avec_ses_trous():
+    """Un éclat dont l'extérieur disparaît ne doit pas laisser son trou devenir un faux polygone."""
+    vrai = json.loads(_contour("060880101")["geometrie_geojson"])["coordinates"]
+    eclat = [
+        [[7.4, 43.7], [7.4000001, 43.7], [7.4, 43.7000001], [7.4, 43.7]],          # extérieur < 1 m
+        [[7.41, 43.71], [7.42, 43.71], [7.42, 43.72], [7.41, 43.72], [7.41, 43.71]],  # « trou » de 1 km
+    ]
+    out = export_front.alleger_geometrie({"type": "MultiPolygon", "coordinates": [vrai, eclat]})
+    assert len(out["coordinates"]) == 1 and out["coordinates"][0][0][0] == [7.26, 43.7]
+    # Trou dégénéré dans un vrai polygone : seul le trou disparaît
+    avec_trou = vrai + [[[7.262, 43.702], [7.2620001, 43.702], [7.262, 43.7020001], [7.262, 43.702]]]
+    assert len(export_front.alleger_geometrie({"type": "Polygon", "coordinates": avec_trou})["coordinates"]) == 1
+    with pytest.raises(ValueError, match="vide"):
+        export_front.alleger_geometrie({"type": "Polygon", "coordinates": eclat[:1]})
+
+
+def test_quartier_du_mart_sans_contour_annule_l_export(tmp_path):
+    gold = _gold(tmp_path)
+    df = pd.read_parquet(gold / f"{QUARTIER}.parquet")
+    df.loc[0, "code_iris"] = "060889999"
+    df.to_parquet(gold / f"{QUARTIER}.parquet", index=False)
+    with pytest.raises(ValueError, match="sans contour"):
+        export_front.exporter(gold, tmp_path / "front")
+    assert not list((tmp_path / "front").glob("*.json"))
+
+
+def test_contours_bronze_absents_annule_l_export(tmp_path):
+    with pytest.raises(FileNotFoundError, match="Contours IRIS absents"):
+        export_front.exporter(_gold(tmp_path), tmp_path / "front", bronze_dir=tmp_path / "vide")
+
+
+def test_contours_identiques_non_reecrits(tmp_path):
+    gold = _gold(tmp_path)
+    out = export_front.exporter(gold, tmp_path / "front")
+    fichier = out.parent / "geo" / "iris-06.geojson"
+    avant = fichier.stat().st_mtime_ns
+    export_front.exporter(gold, out)
+    assert fichier.stat().st_mtime_ns == avant
+    assert not list(fichier.parent.glob("*.tmp"))

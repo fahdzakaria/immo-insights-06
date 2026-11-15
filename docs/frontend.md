@@ -13,11 +13,11 @@ service `frontend` du compose (image standalone multi-étapes).
 | Route | Vue | Ingrédients |
 | --- | --- | --- |
 | `/` | Marché (landing) | **Scène 3D R3F** : une barre par commune (position = GPS réel, hauteur = prix/m²), parallaxe souris ; KPIs à compteurs animés ; impact DPE |
-| `/carte` | Carte | Choroplèthe MapLibre (polygones GeoJSON des 163 communes), 4 métriques commutables, tooltip au survol |
+| `/carte` | Carte | Choroplèthe MapLibre (polygones GeoJSON des 163 communes), 4 métriques commutables, tooltip au survol ; au-delà du zoom 10,6, prix et évolution par quartier IRIS (contours chargés à la demande, même échelle que les communes, raccourcis « Par quartier → ») ; rendement et score restent à la commune |
 | `/tendances` | Tendances | Séries trimestrielles Recharts (prix + volumes), zoom par commune |
 | `/comparateur` | Comparateur | Jusqu'à 3 communes côte à côte + radar des 6 composantes du score |
 | `/rendement` | Rendement | Nuage prix/rendement (taille = fiabilité) + classement filtrable |
-| `/estimateur` | Estimateur | Formulaire → estimation animée avec fourchette et méthode affichée |
+| `/estimateur` | Estimateur | Formulaire → estimation animée avec fourchette et méthode affichée ; quartier facultatif quand la commune est découpée (repli sur la commune, signalé, sous 5 ventes) |
 | `/opportunites` | Opportunités | Cartes classées : anneau de score SVG animé + barres par composante |
 
 ## Design — « Terminal éditorial » (Bloomberg × presse)

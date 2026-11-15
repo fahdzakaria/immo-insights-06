@@ -300,3 +300,77 @@ class TestPivotINSEE:
                                    "TAB_MEASURE": "POP", "OBS_VALUE": "74000"}]
         ligne = pivoter_insee(pd.DataFrame(lignes)).iloc[0]
         assert ligne["annee_population_ref"] == 2017 and ligne["population_ref"] == 70000
+
+
+class TestRattachementIris:
+    """Rattachement vente → quartier IRIS (point dans polygone)."""
+
+    @staticmethod
+    def _carre(lon0, lat0, cote=0.01):
+        import json
+        return json.dumps({"type": "Polygon", "coordinates": [[
+            [lon0, lat0], [lon0 + cote, lat0], [lon0 + cote, lat0 + cote], [lon0, lat0 + cote], [lon0, lat0]]]})
+
+    def _contours(self):
+        # Deux quartiers de Nice côte à côte, un quartier de la commune voisine à l'est
+        return pd.DataFrame({
+            "code_iris": ["060880102", "060880101", "061590101"],
+            "nom_iris": ["Est", "Ouest", "Voisine"],
+            "code_commune": ["06088", "06088", "06159"],
+            "geometrie_geojson": [self._carre(7.27, 43.70), self._carre(7.26, 43.70), self._carre(7.28, 43.70)],
+        })
+
+    def _ventes(self, points, communes=None):
+        return pd.DataFrame({
+            "code_commune": communes or ["06088"] * len(points),
+            "longitude": [p[0] for p in points],
+            "latitude": [p[1] for p in points],
+        })
+
+    def test_chaque_vente_recoit_le_quartier_qui_la_contient(self):
+        out, stats = enrichissement.rattacher_iris(
+            self._ventes([(7.265, 43.705), (7.275, 43.705)]), self._contours())
+        assert out["code_iris"].tolist() == ["060880101", "060880102"]
+        assert out["nom_iris"].tolist() == ["Ouest", "Est"]
+        assert stats["nb_rattachees"] == 2 and stats["taux_rattachement_iris"] == 1.0
+
+    def test_vente_non_geolocalisee_ou_hors_contours_sans_quartier(self):
+        out, stats = enrichissement.rattacher_iris(
+            self._ventes([(None, None), (7.10, 43.60), (7.265, 43.705)]), self._contours())
+        assert out["code_iris"].isna().tolist() == [True, True, False]
+        assert stats["nb_rattachees"] == 1 and stats["nb_hors_commune"] == 0
+        assert stats["taux_rattachement_iris"] == pytest.approx(1 / 3, abs=1e-4)
+
+    def test_point_dans_le_quartier_d_une_autre_commune_ecarte(self):
+        """Vente déclarée à Nice mais géocodée dans la commune voisine : pas de quartier."""
+        out, stats = enrichissement.rattacher_iris(self._ventes([(7.285, 43.705)]), self._contours())
+        assert out["code_iris"].isna().all()
+        assert stats["nb_hors_commune"] == 1 and stats["nb_rattachees"] == 0
+
+    def test_contours_qui_se_recouvrent_un_seul_quartier_deterministe(self):
+        contours = self._contours()
+        contours.loc[0, "geometrie_geojson"] = self._carre(7.26, 43.70)  # recouvre « Ouest »
+        out, stats = enrichissement.rattacher_iris(self._ventes([(7.265, 43.705)]), contours)
+        assert len(out) == 1 and out.loc[0, "code_iris"] == "060880101"  # plus petit code
+        assert stats["nb_rattachees"] == 1
+
+    def test_point_sur_la_frontiere_garde_un_quartier(self):
+        """7.27 est la limite commune entre « Ouest » et « Est » : le plus petit code gagne."""
+        out, stats = enrichissement.rattacher_iris(self._ventes([(7.27, 43.705)]), self._contours())
+        assert out.loc[0, "code_iris"] == "060880101" and stats["nb_rattachees"] == 1
+
+    def test_index_non_trivial_et_multipolygone(self):
+        import json
+        contours = self._contours().iloc[[1]].copy()
+        deux = [json.loads(self._carre(7.26, 43.70))["coordinates"], json.loads(self._carre(7.30, 43.70))["coordinates"]]
+        contours["geometrie_geojson"] = [json.dumps({"type": "MultiPolygon", "coordinates": deux})]
+        ventes = self._ventes([(7.10, 43.60), (7.305, 43.705)])
+        ventes.index = [10, 42]
+        out, _ = enrichissement.rattacher_iris(ventes, contours)
+        assert out.index.tolist() == [10, 42]
+        assert pd.isna(out.loc[10, "code_iris"]) and out.loc[42, "code_iris"] == "060880101"
+
+    def test_sans_contours_colonnes_presentes_et_vides(self):
+        out, stats = enrichissement.rattacher_iris(self._ventes([(7.265, 43.705)]), self._contours().iloc[0:0])
+        assert out["code_iris"].isna().all() and "nom_iris" in out.columns
+        assert stats["taux_rattachement_iris"] == 0.0

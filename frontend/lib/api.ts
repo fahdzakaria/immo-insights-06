@@ -64,6 +64,29 @@ export interface CommunePrix {
   taux_pauvrete: number | null;
 }
 
+/** Une ligne de mart_prix_m2_par_quartier : quartier IRIS × type de bien.
+ *  Les prix sont déjà null sous SEUIL_VENTES_AFFICHAGE ventes sur 24 mois. */
+export interface QuartierPrix {
+  quartier_type_id: string;
+  code_iris: string;
+  nom_iris: string;
+  code_commune: string;
+  nom_commune: string;
+  code_departement: string;
+  type_bien: TypeBien;
+  nb_ventes_total: number;
+  nb_ventes_24m: number;
+  /** Au moins 20 ventes sur 24 mois */
+  fiable: boolean;
+  prix_m2_median: number | null;
+  prix_m2_p25: number | null;
+  prix_m2_p75: number | null;
+  evolution_1an_pct: number | null;
+  evolution_3ans_pct: number | null;
+  prix_m2_median_commune: number | null;
+  ecart_commune_pct: number | null;
+}
+
 export interface Kpis {
   departement: string;
   nb_ventes_total: number;
@@ -145,6 +168,12 @@ export interface Estimation {
   type_bien: TypeBien;
   surface: number;
   etiquette_dpe: string | null;
+  /** Quartier demandé (null si toute la commune) */
+  code_iris: string | null;
+  nom_iris: string | null;
+  /** Maille réellement utilisée : un quartier trop peu fourni retombe sur la commune */
+  maille: "commune" | "quartier";
+  maille_motif: string | null;
   prix_m2_reference: number;
   ajustement_dpe_pct: number;
   ajustement_dpe_applique: boolean;

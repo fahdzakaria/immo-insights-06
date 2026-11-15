@@ -24,5 +24,6 @@ models:
 
 vars:
   # Seuils de fiabilité partagés par les marts (documentés dans docs/gold.md)
+  seuil_ventes_affichage: 5 # ventes sur 24 mois en dessous desquelles un quartier n'a aucun chiffre
   seuil_ventes_fiable: 20   # ventes sur 24 mois pour qu'un rendement soit dit fiable
   seuil_ventes_dpe: 100     # ventes par étiquette pour appliquer l'écart DPE

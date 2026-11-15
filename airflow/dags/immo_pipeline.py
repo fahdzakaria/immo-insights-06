@@ -27,7 +27,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
 from pipelines import alertes, config, export_front
-from pipelines.ingestion import dpe, dvf, insee, loyers, osm
+from pipelines.ingestion import dpe, dvf, insee, iris, loyers, osm
 from pipelines.silver import dpe_clean, dvf_clean, enrichissement, osm_clean, referentiels
 
 logger = logging.getLogger("immo_pipeline")
@@ -59,7 +59,7 @@ default_args = {
 
 with DAG(
     dag_id="immo_pipeline",
-    description="DVF/INSEE/DPE/loyers/OSM → bronze → silver → marts dbt",
+    description="DVF/INSEE/DPE/loyers/OSM/IRIS → bronze → silver → marts dbt",
     schedule="0 6 * * *",  # tous les jours à 6h (les sources bougent au fil de l'eau)
     start_date=pendulum.datetime(2026, 1, 1, tz="Europe/Paris"),
     catchup=False,  # pas de rattrapage : chaque run reconstruit l'état courant
@@ -70,12 +70,13 @@ with DAG(
 ) as dag:
     departements = config.departements()
 
-    with TaskGroup(group_id="bronze", tooltip="Ingestion des 5 sources (idempotente)") as bronze:
+    with TaskGroup(group_id="bronze", tooltip="Ingestion des 6 sources (idempotente)") as bronze:
         b_dvf = PythonOperator(task_id="dvf", python_callable=partial(dvf.ingest, departements))
         b_insee = PythonOperator(task_id="insee", python_callable=partial(insee.ingest, departements))
         b_loyers = PythonOperator(task_id="loyers", python_callable=partial(loyers.ingest, departements))
         b_dpe = PythonOperator(task_id="dpe", python_callable=partial(dpe.ingest, departements))
         b_osm = PythonOperator(task_id="osm", python_callable=partial(osm.ingest, departements))
+        b_iris = PythonOperator(task_id="iris", python_callable=partial(iris.ingest, departements))
 
     with TaskGroup(group_id="silver", tooltip="Nettoyage + enrichissement") as silver:
         s_referentiels = PythonOperator(
@@ -92,6 +93,8 @@ with DAG(
     b_dpe >> s_dpe
     b_osm >> s_osm
     [b_insee, b_loyers] >> s_referentiels
+    # Contours IRIS : consommés par l'enrichissement (rattachement vente → quartier)
+    b_iris >> s_enrichissement
 
     dbt_run = BashOperator(task_id="dbt_run", bash_command=DBT_CMD.format("run"))
     dbt_test = BashOperator(task_id="dbt_test", bash_command=DBT_CMD.format("test"))

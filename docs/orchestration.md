@@ -6,9 +6,13 @@
 bronze.dvf ─────────────► silver.dvf ──────────┐
 bronze.dpe ─────────────► silver.dpe ──────────┤
 bronze.osm ─────────────► silver.osm ──────────┼─► silver.enrichissement ─► dbt_run ─► dbt_test ─► dbt_docs
-bronze.insee ──┬────────► silver.referentiels ─┘
-bronze.loyers ─┘
+bronze.insee ──┬────────► silver.referentiels ─┤
+bronze.loyers ─┘                               │
+bronze.iris ───────────────────────────────────┘   (contours des quartiers → rattachement vente → quartier)
 ```
+
+15 tâches : 6 bronze, 5 silver, `dbt_run`, `dbt_test`, `dbt_docs`, `export_json_front`
+(cette dernière après `dbt_test`).
 
 - **Dépendances fines** : chaque nettoyage silver n'attend que *sa* source
   bronze — l'échec d'OSM ne bloque pas le nettoyage DVF, seul

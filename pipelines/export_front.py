@@ -1,12 +1,16 @@
 """Export des marts gold en JSON pour le frontend (mode « statique »).
 
-Les 5 marts gold pèsent ~150 Ko en Parquet (~570 Ko en JSON, ~90 Ko compressés) : le site peut les embarquer et
+Les 6 marts gold pèsent ~150 Ko en Parquet (~570 Ko en JSON, ~90 Ko compressés) : le site peut les embarquer et
 faire tout le filtrage dans le navigateur, sans API à héberger ni à réveiller.
 Ce module écrit un fichier JSON par mart + un `meta.json` (date de
 génération, volumétrie, période couverte) dans `frontend/public/data/`.
 
 Le format est « colonnes » ({"colonnes": [...], "lignes": [[...], ...]}) :
 deux à trois fois plus compact qu'une liste d'objets, reconstruit côté front.
+
+Les contours des quartiers IRIS présents dans `mart_prix_m2_par_quartier` sont
+exportés à part, allégés, dans `frontend/public/geo/iris-{dep}.geojson` : la
+carte ne les charge qu'au zoom.
 
 Usage : python -m pipelines.export_front [--out DOSSIER]
 """
@@ -22,12 +26,13 @@ from pathlib import Path
 
 import duckdb
 
-from pipelines.config import DATA_DIR, GOLD_DIR
+from pipelines.config import BRONZE_DIR, DATA_DIR, GOLD_DIR
 
 logger = logging.getLogger("export_front")
 
 MARTS = [
     "mart_prix_m2_par_commune",
+    "mart_prix_m2_par_quartier",
     "mart_evolution_trimestrielle",
     "mart_rendement_locatif",
     "mart_impact_dpe",
@@ -109,10 +114,99 @@ def _meme_donnee(chemin: Path, table: dict) -> bool:
     return True
 
 
-def exporter(gold_dir: Path | None = None, out_dir: Path | None = None) -> Path:
+# 5 décimales de degré ≈ 1 m : invisible sur la carte, 40 % de poids en moins
+DECIMALES_CONTOURS = 5
+
+
+def _alleger_anneau(anneau: list) -> list:
+    """Arrondit les sommets d'un anneau et retire les doublons consécutifs créés par l'arrondi."""
+    points: list[list[float]] = []
+    for lon, lat, *_ in anneau:
+        p = [round(lon, DECIMALES_CONTOURS), round(lat, DECIMALES_CONTOURS)]
+        if not points or p != points[-1]:
+            points.append(p)
+    return points
+
+
+def alleger_geometrie(geometrie: dict) -> dict:
+    """Polygon / MultiPolygon GeoJSON → même géométrie, coordonnées arrondies.
+
+    Un anneau réduit à moins de 4 points par l'arrondi (éclat de quelques
+    mètres) n'est plus valide : si c'est l'anneau EXTÉRIEUR, tout le polygone
+    disparaît (sinon son premier trou deviendrait un faux extérieur) ; si c'est
+    un trou, seul le trou disparaît. Une géométrie qui deviendrait vide échoue.
+    """
+    def polygone(anneaux: list) -> list:
+        allege = [_alleger_anneau(a) for a in anneaux]
+        if not allege or len(allege[0]) < 4:
+            return []
+        return [allege[0]] + [a for a in allege[1:] if len(a) >= 4]
+
+    if geometrie["type"] == "Polygon":
+        polygones = [polygone(geometrie["coordinates"])]
+    else:
+        polygones = [polygone(p) for p in geometrie["coordinates"]]
+    polygones = [p for p in polygones if p]
+    if not polygones:
+        raise ValueError("Contour IRIS vide après allègement (polygone de moins d'un mètre ?)")
+    if geometrie["type"] == "Polygon":
+        return {"type": "Polygon", "coordinates": polygones[0]}
+    return {"type": "MultiPolygon", "coordinates": polygones}
+
+
+def contours_quartiers(table: dict, bronze_dir: Path) -> dict[str, dict]:
+    """GeoJSON allégé des quartiers du mart, un FeatureCollection par département.
+
+    Seuls les quartiers présents dans le mart sont exportés (communes découpées
+    en IRIS). Un quartier du mart sans contour est une incohérence : on échoue.
+    """
+    i_iris, i_dep = table["colonnes"].index("code_iris"), table["colonnes"].index("code_departement")
+    par_dep: dict[str, set[str]] = {}
+    for ligne in table["lignes"]:
+        par_dep.setdefault(ligne[i_dep], set()).add(ligne[i_iris])
+
+    sorties = {}
+    for dep, codes in sorted(par_dep.items()):
+        src = bronze_dir / "iris" / f"departement={dep}" / "contours.parquet"
+        if not src.exists():
+            raise FileNotFoundError(f"Contours IRIS absents : {src} (lancer l'ingestion iris d'abord)")
+        lignes = duckdb.connect(":memory:").execute(
+            f"SELECT code_iris, nom_iris, code_commune, nom_commune, geometrie_geojson "
+            f"FROM read_parquet('{src}') ORDER BY code_iris").fetchall()
+        features = [
+            {"type": "Feature",
+             "properties": {"code": code, "nom": nom, "commune": commune, "nom_commune": nom_commune},
+             "geometry": alleger_geometrie(json.loads(geometrie))}
+            for code, nom, commune, nom_commune, geometrie in lignes if code in codes
+        ]
+        manquants = codes - {f["properties"]["code"] for f in features}
+        if manquants:
+            raise ValueError(f"Quartiers du mart sans contour IRIS ({dep}) : {sorted(manquants)[:5]}")
+        sorties[dep] = {"type": "FeatureCollection", "features": features}
+    return sorties
+
+
+def exporter_contours(table: dict, bronze_dir: Path, geo_dir: Path) -> list[Path]:
+    """Écrit geo/iris-{dep}.geojson ; ne réécrit pas un fichier identique."""
+    geo_dir.mkdir(parents=True, exist_ok=True)
+    chemins = []
+    for dep, collection in contours_quartiers(table, bronze_dir).items():
+        chemin = geo_dir / f"iris-{dep}.geojson"
+        texte = _serialiser(collection)
+        if not chemin.exists() or chemin.read_text(encoding="utf-8") != texte:
+            _ecrire(texte, chemin)
+            logger.info("Export front : %d contours de quartiers → %s (%d Ko)",
+                        len(collection["features"]), chemin, len(texte.encode()) // 1024)
+        chemins.append(chemin)
+    return chemins
+
+
+def exporter(gold_dir: Path | None = None, out_dir: Path | None = None,
+             bronze_dir: Path | None = None) -> Path:
     """Écrit les JSON du front ; échoue si un mart manque ou est vide."""
     gold_dir = Path(gold_dir or GOLD_DIR)
     out_dir = Path(out_dir or front_data_dir())
+    bronze_dir = Path(bronze_dir or BRONZE_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     volumetrie: dict[str, int] = {}
@@ -126,6 +220,10 @@ def exporter(gold_dir: Path | None = None, out_dir: Path | None = None) -> Path:
             raise ValueError(f"Mart gold vide : {src} — export annulé pour ne pas publier un site vide")
         tables[mart] = table
         volumetrie[mart] = len(table["lignes"])
+
+    # Contours des quartiers : fichier à part (public/geo, à côté de public/data),
+    # géré indépendamment des marts — il ne change qu'avec le millésime IRIS.
+    exporter_contours(tables["mart_prix_m2_par_quartier"], bronze_dir, out_dir.parent / "geo")
 
     # Donnée inchangée depuis le dernier export → on ne touche à rien : la date
     # du pied de page reste celle du dernier vrai changement, et git reste propre.

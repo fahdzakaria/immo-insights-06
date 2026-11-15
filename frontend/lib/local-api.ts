@@ -105,10 +105,22 @@ const TRIS_COMMUNES = {
 const SEUIL_VENTES_ESTIMATION = 5;
 const SEUIL_FIABILITE_CORRECTE = 20;
 const SEUIL_FIABILITE_BONNE = 100;
+const METHODES = {
+  commune: "médiane communale 24 mois × ajustement DPE départemental (quartiles locaux)",
+  quartier: "médiane du quartier IRIS 24 mois × ajustement DPE départemental (quartiles du quartier)",
+};
 
 /** Paramètre booléen de requête : true/1/yes/on (FastAPI accepte aussi t/y et
  * répond 422 sur une valeur invalide ; le site n'envoie que true ou rien). */
 const vrai = (v: unknown) => v === true || ["true", "1", "yes", "on"].includes(String(v).toLowerCase());
+
+const TRIS_QUARTIERS = {
+  prix_m2: "prix_m2_median",
+  ventes: "nb_ventes_24m",
+  evolution: "evolution_1an_pct",
+  ecart: "ecart_commune_pct",
+  nom: "nom_iris",
+};
 
 const TRIS_RENDEMENT = { rendement: "rendement_brut_pct", prix_m2: "prix_m2_median", loyer: "loyer_m2" };
 
@@ -120,6 +132,7 @@ function garder(l: Ligne, cles: string[]): Ligne {
 
 export function creerApiLocale(charger: ChargeurMart) {
   const prixCommunes = () => charger("mart_prix_m2_par_commune");
+  const prixQuartiers = () => charger("mart_prix_m2_par_quartier");
   const trimestriel = () => charger("mart_evolution_trimestrielle");
   const rendements = () => charger("mart_rendement_locatif");
   const impactDpe = () => charger("mart_impact_dpe");
@@ -172,6 +185,29 @@ export function creerApiLocale(charger: ChargeurMart) {
             "score_dynamique_marche", "score_dynamique_demo", "score_services", "score_tension",
           ]),
         ),
+    };
+  }
+
+  /** Miroir de api/app/routers/quartiers.py */
+  async function quartiers(p: Params, chemin: string) {
+    const code = present(p.code_commune) ? String(p.code_commune) : null;
+    if (code && !/^(\d{5}|2[AB]\d{3})$/.test(code)) throw new ErreurApiLocale(422, chemin, "paramètres invalides");
+    const filtrees = (await prixQuartiers()).filter(
+      (l) =>
+        l.code_departement === dep(p) &&
+        (!code || l.code_commune === code) &&
+        memeType(l, p) &&
+        (!vrai(p.fiable) || l.fiable === true),
+    );
+    const tri = choisir(p.tri, TRIS_QUARTIERS, "ventes");
+    const ordre = p.ordre === "asc" ? "asc" : "desc";
+    const limit = entier(p.limit, 500, 1, 2000);
+    const offset = entier(p.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+    return {
+      total: filtrees.length,
+      limit,
+      offset,
+      resultats: trier(filtrees, TRIS_QUARTIERS[tri], ordre).slice(offset, offset + limit),
     };
   }
 
@@ -299,8 +335,21 @@ export function creerApiLocale(charger: ChargeurMart) {
     const type = p.type_bien === "maison" ? "maison" : "appartement";
     const surface = nombre(p.surface);
     const etiquette = present(p.etiquette_dpe) ? String(p.etiquette_dpe) : null;
-    if (!/^\d{5}$|^2[AB]\d{3}$/.test(code) || surface === undefined || surface <= 8 || surface >= 1000) {
+    const codeIris = present(p.code_iris) ? String(p.code_iris) : null;
+    if (
+      !/^\d{5}$|^2[AB]\d{3}$/.test(code) || surface === undefined || surface <= 8 || surface >= 1000 ||
+      (codeIris !== null && !/^\d{9}$|^2[AB]\d{7}$/.test(codeIris))
+    ) {
       throw new ErreurApiLocale(422, chemin, "paramètres invalides");
+    }
+    // Le quartier est validé AVANT le seuil de la commune (même ordre que l'API)
+    let quartier: Ligne | undefined;
+    if (codeIris) {
+      quartier = (await prixQuartiers()).find((l) => l.code_iris === codeIris && l.type_bien === type);
+      if (!quartier) throw new ErreurApiLocale(404, chemin, `Quartier ${codeIris} inconnu`);
+      if (quartier.code_commune !== code) {
+        throw new ErreurApiLocale(422, chemin, `Le quartier ${codeIris} n'appartient pas à la commune ${code}`);
+      }
     }
     const base = (await prixCommunes()).find((l) => l.code_commune === code && l.type_bien === type);
     if (
@@ -308,6 +357,25 @@ export function creerApiLocale(charger: ChargeurMart) {
       (base.nb_ventes_24m ?? 0) < SEUIL_VENTES_ESTIMATION
     ) {
       throw new ErreurApiLocale(404, chemin, "Pas assez de ventes récentes dans cette commune pour estimer");
+    }
+    // Référence : la commune par défaut, le quartier s'il est demandé et assez fourni
+    let reference: Ligne = base;
+    let maille: "commune" | "quartier" = "commune";
+    let nomIris: string | null = null;
+    let motifQuartier: string | null = null;
+    if (quartier) {
+      nomIris = quartier.nom_iris;
+      if (
+        quartier.prix_m2_median == null || quartier.prix_m2_p25 == null || quartier.prix_m2_p75 == null ||
+        quartier.nb_ventes_24m < SEUIL_VENTES_ESTIMATION
+      ) {
+        motifQuartier =
+          `moins de ${SEUIL_VENTES_ESTIMATION} ventes sur 24 mois dans ce quartier ` +
+          "pour ce type de bien : référence de la commune utilisée";
+      } else {
+        reference = quartier;
+        maille = "quartier";
+      }
     }
     // L'écart DPE n'est appliqué que s'il est statistiquement fiable
     let ajustement = 0;
@@ -324,7 +392,7 @@ export function creerApiLocale(charger: ChargeurMart) {
         motif = "écart DPE non appliqué : non significatif pour cette étiquette (trop peu de ventes ou écart trop incertain)";
       }
     }
-    const nbVentes: number = base.nb_ventes_24m;
+    const nbVentes: number = reference.nb_ventes_24m;
     const niveau =
       nbVentes >= SEUIL_FIABILITE_BONNE ? "bonne" : nbVentes >= SEUIL_FIABILITE_CORRECTE ? "correcte" : "faible";
     const facteur = 1 + ajustement / 100;
@@ -334,17 +402,21 @@ export function creerApiLocale(charger: ChargeurMart) {
       type_bien: type,
       surface,
       etiquette_dpe: etiquette,
-      prix_m2_reference: base.prix_m2_median,
+      code_iris: codeIris,
+      nom_iris: nomIris,
+      maille,
+      maille_motif: motifQuartier,
+      prix_m2_reference: reference.prix_m2_median,
       ajustement_dpe_pct: ajustement,
       ajustement_dpe_applique: applique,
       ajustement_dpe_motif: motif,
-      prix_estime: arrondiPython(surface * base.prix_m2_median * facteur),
-      fourchette_basse: arrondiPython(surface * base.prix_m2_p25 * facteur),
-      fourchette_haute: arrondiPython(surface * base.prix_m2_p75 * facteur),
+      prix_estime: arrondiPython(surface * reference.prix_m2_median * facteur),
+      fourchette_basse: arrondiPython(surface * reference.prix_m2_p25 * facteur),
+      fourchette_haute: arrondiPython(surface * reference.prix_m2_p75 * facteur),
       fiabilite: {
         nb_ventes_24m: nbVentes,
         niveau,
-        methode: "médiane communale 24 mois × ajustement DPE départemental (quartiles locaux)",
+        methode: METHODES[maille],
       },
     };
   }
@@ -356,8 +428,8 @@ export function creerApiLocale(charger: ChargeurMart) {
       premier_trimestre: trimestres[0] ?? null,
       dernier_trimestre: trimestres[trimestres.length - 1] ?? null,
       marts: [
-        "mart_prix_m2_par_commune", "mart_evolution_trimestrielle", "mart_rendement_locatif",
-        "mart_impact_dpe", "mart_score_investissement",
+        "mart_prix_m2_par_commune", "mart_prix_m2_par_quartier", "mart_evolution_trimestrielle",
+        "mart_rendement_locatif", "mart_impact_dpe", "mart_score_investissement",
       ],
     };
   }
@@ -367,6 +439,7 @@ export function creerApiLocale(charger: ChargeurMart) {
     const route = chemin.replace(/\/+$/, "");
     switch (route) {
       case "/api/v1/communes": return communes(params);
+      case "/api/v1/quartiers": return quartiers(params, chemin);
       case "/api/v1/tendances": return tendances(params);
       case "/api/v1/kpis": return kpis(params);
       case "/api/v1/dpe/impact": return dpeImpact(params);

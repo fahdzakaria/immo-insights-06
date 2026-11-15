@@ -37,7 +37,7 @@ function differences(attendu: any, obtenu: any, chemin = ""): string[] {
 }
 
 const cleLigne = (l: any) =>
-  JSON.stringify([l.commune_type_id ?? l.code_commune ?? "", l.type_bien ?? "", l.trimestre ?? "", l.etiquette_dpe ?? ""]);
+  JSON.stringify([l.quartier_type_id ?? l.commune_type_id ?? l.code_commune ?? "", l.type_bien ?? "", l.trimestre ?? "", l.etiquette_dpe ?? ""]);
 const parCle = (lignes: any[]) => [...lignes].sort((a, b) => (cleLigne(a) < cleLigne(b) ? -1 : cleLigne(a) > cleLigne(b) ? 1 : 0));
 
 /**
@@ -118,6 +118,28 @@ cas.push({ chemin: "/api/v1/kpis", params: { departement: "83" } });
 cas.push({ chemin: "/api/v1/communes", params: { limit: 50, offset: 10000 } });
 cas.push({ chemin: "/api/v1/rendement", params: { limit: 10, offset: 295, tri: "prix_m2", ordre: "asc" }, tri: "prix_m2_median" });
 
+// Maille quartier : par commune découpée en IRIS, filtres, tris, pagination, erreurs
+const tousQuartiers = ((await locale("/api/v1/quartiers", { limit: 2000 })) as any).resultats;
+const communesDecoupees = [...new Set<string>(tousQuartiers.map((q: any) => q.code_commune as string))];
+for (const type_bien of T) {
+  cas.push({ chemin: "/api/v1/quartiers", params: { departement: "06", type_bien, limit: 2000 }, tri: "nb_ventes_24m" });
+  cas.push({ chemin: "/api/v1/quartiers", params: { type_bien, fiable: true, limit: 2000 }, tri: "nb_ventes_24m" });
+  for (const code_commune of communesDecoupees) {
+    cas.push({ chemin: "/api/v1/quartiers", params: { code_commune, type_bien, limit: 500 }, tri: "nb_ventes_24m" });
+  }
+}
+for (const [tri, colonne] of [["prix_m2", "prix_m2_median"], ["ventes", "nb_ventes_24m"], ["evolution", "evolution_1an_pct"], ["ecart", "ecart_commune_pct"], ["nom", "nom_iris"]]) {
+  for (const ordre of ["asc", "desc"]) {
+    cas.push({ chemin: "/api/v1/quartiers", params: { code_commune: "06088", type_bien: "appartement", tri, ordre, limit: 500 }, tri: colonne });
+  }
+}
+cas.push({ chemin: "/api/v1/quartiers", params: { code_commune: "06088", tri: "nom", ordre: "asc", limit: 20, offset: 40 }, tri: "nom_iris" });
+cas.push({ chemin: "/api/v1/quartiers", params: { code_commune: "06029", fiable: true, type_bien: "maison" }, tri: "nb_ventes_24m" });
+cas.push({ chemin: "/api/v1/quartiers", params: { code_commune: "06050" } }); // commune non découpée : liste vide
+cas.push({ chemin: "/api/v1/quartiers", params: { departement: "83" } });
+cas.push({ chemin: "/api/v1/quartiers", params: { limit: 50, offset: 10000 } });
+cas.push({ chemin: "/api/v1/quartiers", params: { code_commune: "Nice" } }); // 422
+
 // Toutes les communes : fiche détail, tendances communales, estimations
 const communes = ((await locale("/api/v1/communes", { limit: 500, type_bien: "appartement" })) as any).resultats;
 const maisons = ((await locale("/api/v1/communes", { limit: 500, type_bien: "maison" })) as any).resultats;
@@ -131,6 +153,21 @@ for (const code of codes) {
     }
   }
 }
+// Estimation au quartier : chaque quartier des communes découpées, appartement et
+// maison (quartier fourni, fiabilité faible, repli sur la commune), avec et sans DPE
+for (const q of tousQuartiers as any[]) {
+  cas.push({ chemin: "/api/v1/estimation", params: { code_commune: q.code_commune, type_bien: q.type_bien, surface: 62, code_iris: q.code_iris } });
+}
+for (const q of (tousQuartiers as any[]).filter((_, i) => i % 9 === 0)) {
+  for (const etiquette_dpe of ["B", "F"]) {
+    cas.push({ chemin: "/api/v1/estimation", params: { code_commune: q.code_commune, type_bien: q.type_bien, surface: 37.5, code_iris: q.code_iris, etiquette_dpe } });
+  }
+}
+cas.push({ chemin: "/api/v1/estimation", params: { code_commune: "06088", surface: 50, code_iris: "060290111" } }); // autre commune : 422
+cas.push({ chemin: "/api/v1/estimation", params: { code_commune: "06088", surface: 50, code_iris: "060889999" } }); // inconnu : 404
+cas.push({ chemin: "/api/v1/estimation", params: { code_commune: "06088", surface: 50, code_iris: "Nice" } });      // malformé : 422
+cas.push({ chemin: "/api/v1/estimation", params: { code_commune: "06050", surface: 50, code_iris: "060880401" } }); // autre commune, elle-même sous le seuil : 422 (quartier validé d'abord)
+
 // Erreurs attendues : commune inconnue (404), surface hors bornes (422)
 cas.push({ chemin: "/api/v1/communes/99999" });
 cas.push({ chemin: "/api/v1/estimation", params: { code_commune: "99999", surface: 50 } });

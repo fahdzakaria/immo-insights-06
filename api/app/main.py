@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
-from app.routers import communes, investissement, marche, tendances
+from app.routers import communes, investissement, marche, quartiers, tendances
 
 app = FastAPI(
     title="Immo Data Platform API",
@@ -35,6 +35,7 @@ app.add_middleware(
 
 app.include_router(marche.router)
 app.include_router(communes.router)
+app.include_router(quartiers.router)
 app.include_router(tendances.router)
 app.include_router(investissement.router)
 

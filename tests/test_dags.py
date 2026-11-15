@@ -30,7 +30,7 @@ def dag(dagbag):
 def test_structure_du_dag(dag):
     ids = set(dag.task_ids)
     attendus = {
-        "bronze.dvf", "bronze.insee", "bronze.loyers", "bronze.dpe", "bronze.osm",
+        "bronze.dvf", "bronze.insee", "bronze.loyers", "bronze.dpe", "bronze.osm", "bronze.iris",
         "silver.referentiels", "silver.dpe", "silver.osm", "silver.dvf", "silver.enrichissement",
         "dbt_run", "dbt_test", "dbt_docs", "export_json_front",
     }
@@ -42,6 +42,8 @@ def test_dependances_critiques(dag):
     enrich = dag.get_task("silver.enrichissement")
     amont = set(enrich.upstream_task_ids)
     assert {"silver.referentiels", "silver.dpe", "silver.osm", "silver.dvf"} <= amont
+    # Le rattachement au quartier a besoin des contours IRIS
+    assert "bronze.iris" in amont
     # dbt s'exécute après le silver, tests après run
     assert "dbt_run" in dag.get_task("dbt_test").upstream_task_ids
     assert "silver.enrichissement" in dag.get_task("dbt_run").upstream_task_ids

@@ -3,11 +3,11 @@
 /** Vue Estimateur : formulaire → estimation transparente avec fourchette animée. */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChampRecherche, Curseur } from "@/components/filtres";
 import { Compteur, Erreur, TitreSection } from "@/components/ui";
-import type { CommunePrix, Estimation, TypeBien } from "@/lib/api";
-import { apiGet } from "@/lib/api";
+import type { CommunePrix, Estimation, QuartierPrix, TypeBien } from "@/lib/api";
+import { apiGet, SEUIL_VENTES_AFFICHAGE } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { euro, nombre } from "@/lib/format";
 import { DPE_COULEURS } from "@/lib/format";
@@ -17,6 +17,7 @@ export default function PageEstimateur() {
   const [typeBien, setTypeBien] = useState<TypeBien>("appartement");
   const [surface, setSurface] = useState(60);
   const [dpe, setDpe] = useState<string | null>(null);
+  const [codeIris, setCodeIris] = useState<string>("");
   const [resultat, setResultat] = useState<Estimation | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -28,6 +29,14 @@ export default function PageEstimateur() {
     (c) => c.nom_commune.toLowerCase() === recherche.toLowerCase(),
   );
 
+  // Quartiers de la commune choisie (seulement si l'INSEE la découpe en IRIS)
+  const { data: quartiers } = useApi<{ resultats: QuartierPrix[] }>("/api/v1/quartiers", {
+    code_commune: commune?.code_commune ?? "00000", type_bien: typeBien, tri: "nom", ordre: "asc", limit: 500,
+  });
+  const listeQuartiers = commune ? quartiers?.resultats.filter((q) => q.code_commune === commune.code_commune) ?? [] : [];
+  // Changer de commune ou de type de bien invalide le quartier choisi
+  useEffect(() => setCodeIris(""), [commune?.code_commune, typeBien]);
+
   async function estimer() {
     if (!commune) return;
     setEnCours(true);
@@ -38,6 +47,7 @@ export default function PageEstimateur() {
         type_bien: typeBien,
         surface,
         etiquette_dpe: dpe,
+        code_iris: codeIris || null,
       }));
     } catch (e) {
       setResultat(null);
@@ -71,6 +81,27 @@ export default function PageEstimateur() {
               placeholder="Nice, Antibes, Grasse…"
             />
           </div>
+          {listeQuartiers.length > 0 && (
+            <div>
+              <label htmlFor="quartier-estimateur" className="mb-1.5 block text-sm text-muted">
+                Quartier (optionnel) — {listeQuartiers.length} quartiers INSEE
+              </label>
+              <select
+                id="quartier-estimateur"
+                value={codeIris}
+                onChange={(e) => setCodeIris(e.target.value)}
+                className="w-full max-w-xs cursor-pointer border border-ink bg-panel px-4 py-2 text-sm text-ink outline-none"
+              >
+                <option value="">Toute la commune</option>
+                {listeQuartiers.map((q) => (
+                  <option key={q.code_iris} value={q.code_iris}>
+                    {q.nom_iris}
+                    {q.nb_ventes_24m < SEUIL_VENTES_AFFICHAGE ? " — trop peu de ventes" : ` — ${nombre(q.nb_ventes_24m)} ventes`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-sm text-muted">Type de bien</label>
             <div className="flex gap-2">
@@ -127,7 +158,8 @@ export default function PageEstimateur() {
                 className="glass flex h-full flex-col justify-center gap-5 px-6 py-8"
               >
                 <div className="text-sm text-muted">
-                  {resultat.type_bien} · {resultat.surface} m² · {resultat.nom_commune}
+                  {resultat.type_bien} · {resultat.surface} m² ·{" "}
+                  {resultat.maille === "quartier" ? `${resultat.nom_iris}, ${resultat.nom_commune}` : resultat.nom_commune}
                   {resultat.etiquette_dpe && ` · DPE ${resultat.etiquette_dpe}`}
                 </div>
                 <div className="tabular font-display text-5xl font-black text-accent">
@@ -155,12 +187,16 @@ export default function PageEstimateur() {
                       }}
                     />
                   </div>
-                  <div className="label-mono mt-2 text-center">fourchette = quartiles des ventes locales</div>
+                  <div className="label-mono mt-2 text-center">
+                    fourchette = quartiles des ventes {resultat.maille === "quartier" ? "du quartier" : "de la commune"}
+                  </div>
                 </div>
 
                 <dl className="grid grid-cols-2 gap-3 text-sm">
                   <div className="glass px-4 py-3">
-                    <dt className="text-muted">Référence locale</dt>
+                    <dt className="text-muted">
+                      {resultat.maille === "quartier" ? "Référence du quartier" : "Référence de la commune"}
+                    </dt>
                     <dd className="font-semibold">{euro(resultat.prix_m2_reference)}/m²</dd>
                   </div>
                   <div className="glass px-4 py-3">
@@ -174,6 +210,11 @@ export default function PageEstimateur() {
                     )}
                   </div>
                 </dl>
+                {resultat.maille_motif && (
+                  <p className="border-l-2 border-warn pl-3 text-sm text-warn">
+                    {resultat.nom_iris} : {resultat.maille_motif}.
+                  </p>
+                )}
                 <p className="text-xs text-muted">
                   Fiabilité{" "}
                   <span className={`font-semibold ${

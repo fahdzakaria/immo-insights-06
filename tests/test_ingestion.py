@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from pipelines import common
-from pipelines.ingestion import dpe, dvf, insee, osm
+from pipelines.ingestion import dpe, dvf, insee, iris, osm
 from pipelines.ingestion.run_all import SOURCES
 
 
@@ -115,7 +115,7 @@ def test_osm_categorize_ignore_tags_hors_perimetre():
 
 
 def test_registre_des_sources_complet():
-    assert set(SOURCES) == {"dvf", "insee", "loyers", "dpe", "osm"}
+    assert set(SOURCES) == {"dvf", "insee", "loyers", "dpe", "osm", "iris"}
 
 
 def test_dpe_telechargement_partiel_refuse():
@@ -142,3 +142,100 @@ def test_dvf_annee_non_publiee_ignoree(monkeypatch, tmp_path):
     monkeypatch.setattr(dvf, "download_bytes", faux_download)
     assert dvf.ingest(["06"]) == []
     assert not list(tmp_path.rglob("*.parquet"))
+
+
+# --- Contours IRIS (quartiers) ---
+
+def _feature_iris(code="060880401", **props):
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[[7.29, 43.69], [7.30, 43.69], [7.30, 43.70], [7.29, 43.69]]]},
+        "properties": {"cleabs": "IRIS____1", "code_insee": code[:5], "nom_commune": "Nice",
+                       "iris": code[5:], "code_iris": code, "nom_iris": "Mont Boron", "type_iris": "H", **props},
+    }
+
+
+class _ReponseJson:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def test_iris_build_params_filtre_le_departement_et_trie():
+    p = iris.build_params("06", start_index=1000)
+    assert p["CQL_FILTER"] == "code_insee LIKE '06%'"
+    assert p["SORTBY"] == "code_iris"  # pagination stable
+    assert p["SRSNAME"] == "EPSG:4326" and p["STARTINDEX"] == 1000
+
+
+def test_iris_features_to_rows():
+    rows = iris.features_to_rows([_feature_iris()])
+    assert rows[0]["code_iris"] == "060880401" and rows[0]["code_commune"] == "06088"
+    assert rows[0]["nom_iris"] == "Mont Boron" and rows[0]["type_iris"] == "H"
+    assert '"type":"Polygon"' in rows[0]["geometrie_geojson"]
+
+
+def test_iris_schema_change_refuse_avec_message_clair():
+    f = _feature_iris()
+    del f["properties"]["code_iris"]
+    with pytest.raises(ValueError, match="Format IRIS inattendu"):
+        iris.features_to_rows([f])
+
+
+def test_iris_geometrie_absente_refusee():
+    f = _feature_iris()
+    f["geometry"] = None
+    with pytest.raises(ValueError, match="géométrie"):
+        iris.features_to_rows([f])
+
+
+def test_iris_telecharger_pagine_jusqu_au_bout(monkeypatch):
+    monkeypatch.setattr(iris, "TAILLE_PAGE", 2)
+    codes = ["060880101", "060880102", "060880103"]
+    appels = []
+
+    def faux_get(url, params=None, **kw):
+        appels.append(params["STARTINDEX"])
+        page = codes[params["STARTINDEX"]:params["STARTINDEX"] + 2]
+        return _ReponseJson({"numberMatched": 3, "features": [_feature_iris(c) for c in page]})
+
+    monkeypatch.setattr(iris, "http_get", faux_get)
+    rows = iris.telecharger("06")
+    assert [r["code_iris"] for r in rows] == codes
+    assert appels == [0, 2]
+
+
+def test_iris_telechargement_incomplet_refuse(monkeypatch):
+    """Le WFS annonce 500 contours mais n'en renvoie qu'un : on n'écrit pas un bronze tronqué."""
+    monkeypatch.setattr(iris, "http_get", lambda url, params=None, **kw: _ReponseJson(
+        {"numberMatched": 500, "features": [_feature_iris()]}))
+    with pytest.raises(ValueError, match="1 contours reçus pour 500"):
+        iris.telecharger("06")
+
+
+def test_iris_reponse_vide_refusee(monkeypatch):
+    monkeypatch.setattr(iris, "http_get", lambda url, params=None, **kw: _ReponseJson(
+        {"numberMatched": 0, "features": []}))
+    with pytest.raises(ValueError, match="aucun contour"):
+        iris.telecharger("06")
+
+
+def test_iris_ingest_idempotent(monkeypatch, tmp_path):
+    """Deuxième appel : manifeste présent → aucun téléchargement."""
+    monkeypatch.setattr(iris, "BRONZE_DIR", tmp_path)
+    appels = {"n": 0}
+
+    def faux_get(url, params=None, **kw):
+        appels["n"] += 1
+        return _ReponseJson({"numberMatched": 1, "features": [_feature_iris()]})
+
+    monkeypatch.setattr(iris, "http_get", faux_get)
+    (chemin,) = iris.ingest(["06"])
+    assert pd.read_parquet(chemin)["code_iris"].tolist() == ["060880401"]
+    assert "Licence Ouverte" in chemin.with_suffix(".manifest.json").read_text()
+    iris.ingest(["06"])
+    assert appels["n"] == 1
+    iris.ingest(["06"], force=True)
+    assert appels["n"] == 2

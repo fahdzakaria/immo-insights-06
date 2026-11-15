@@ -66,3 +66,34 @@ models:
         tests: [not_null]
       - name: rendement_fiable
         tests: [not_null]
+
+  - name: mart_prix_m2_par_quartier
+    description: >
+      Prix au m² par quartier IRIS × type de bien, pour les communes découpées
+      en quartiers par l'INSEE. Aucun chiffre sous 5 ventes sur 24 mois.
+    columns:
+      - name: quartier_type_id
+        tests: [unique, not_null]
+      - name: code_iris
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_iris')
+              field: code_iris
+      - name: code_commune
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_communes')
+              field: code_commune
+      - name: code_departement
+        tests: [not_null]
+      - name: type_bien
+        tests:
+          - accepted_values:
+              values: [appartement, maison]
+      - name: nb_ventes_24m
+        tests: [not_null]
+      - name: fiable
+        description: Au moins 20 ventes sur 24 mois
+        tests: [not_null]

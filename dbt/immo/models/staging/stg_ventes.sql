@@ -18,6 +18,9 @@ select
     latitude,
     longitude,
     geocode_source,
+    -- quartier IRIS (rattaché en silver ; nul si vente non géolocalisée)
+    code_iris,
+    nom_iris,
     -- contexte communal (déjà joint en silver)
     population,
     evolution_population_pct,

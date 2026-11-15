@@ -13,7 +13,7 @@ dashboard 3D interactif, avec un pipeline data industriel au milieu.
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
 [![CI](https://github.com/fahdzakaria/immo-insights-06/actions/workflows/ci.yml/badge.svg)](https://github.com/fahdzakaria/immo-insights-06/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-87_pytest_·_38_dbt-45d08c)
+![Tests](https://img.shields.io/badge/tests-115_pytest_·_53_dbt-45d08c)
 
 ![Page d'accueil — maquette 3D des prix par commune](docs/captures/accueil.png)
 
@@ -23,7 +23,10 @@ dashboard 3D interactif, avec un pipeline data industriel au milieu.
 l'INSEE (revenus, démographie), les DPE de l'ADEME, la carte officielle des loyers et les points
 d'intérêt OpenStreetMap — puis servies en marts pré-agrégés à un site d'exploration :
 prix au m², tendances trimestrielles, rendement locatif, impact de l'étiquette énergétique sur
-les prix, estimateur de bien et score d'investissement par commune.
+les prix, estimateur de bien et score d'investissement par commune — et, pour les 27 villes
+que l'INSEE découpe en quartiers (Nice, Cannes, Antibes, Le Cannet…), **prix au m² par quartier
+IRIS** : à Nice, de 1 622 €/m² à l'Ariane à 10 184 €/m² au Mont Boron, là où une médiane
+communale ne donnait qu'un seul chiffre.
 
 ## Architecture
 
@@ -34,19 +37,21 @@ les prix, estimateur de bien et score d'investissement par commune.
 │ INSEE comparateur       │──►│          + politique de fraîcheur/source  │──►│ marts → embarqués│
 │ DPE ADEME (API)         │   │ SILVER   9 règles de nettoyage, géocodage │   │ dans le site     │
 │ Carte des loyers        │   │          BAN, enrichissement spatial KDTree│  └────────┬─────────┘
-│ OSM Overpass            │   │ GOLD     5 marts dbt (parquet + DuckDB)   │            ▼
-└────────────────────────┘   └───────────────────────────────────────────┘   Next.js 15 + R3F
+│ OSM Overpass            │   │ GOLD     6 marts dbt (parquet + DuckDB)   │            ▼
+│ Contours IRIS (IGN)     │   │          rattachement vente → quartier    │   Next.js 15 + R3F
+└────────────────────────┘   └───────────────────────────────────────────┘
                                     ▲                                          (Vercel)
                 Airflow (quotidien 06:00, retries, alertes Telegram)    En local : FastAPI +
-                dbt run + 38 tests qualité bloquants                    DuckDB in-memory
+                dbt run + 53 tests qualité bloquants                    DuckDB in-memory
 ```
 
-- **Orchestration** : un DAG Airflow `bronze (5 sources //) → silver → dbt run → dbt test → dbt docs + export JSON du site`,
+- **Orchestration** : un DAG Airflow `bronze (6 sources //) → silver → dbt run → dbt test → dbt docs + export JSON du site`,
   dépendances fines par source, `max_active_runs=1` (un seul écrivain DuckDB).
-- **Déploiement** : les marts gold ne pèsent que **152 Ko** → exportés en JSON en fin de DAG et
-  embarqués dans le site (Vercel), qui rejoue la logique de l'API dans le navigateur. Zéro
-  serveur à héberger ; l'API FastAPI reste servie par le stack Docker local. Équivalence
-  vérifiée sur 1 813 requêtes ([docs/deploiement.md](docs/deploiement.md)).
+- **Déploiement** : les marts gold sont exportés en JSON en fin de DAG (~700 Ko, ~120 Ko
+  compressés) et embarqués dans le site (Vercel), qui rejoue la logique de l'API dans le
+  navigateur ; les contours des quartiers (~170 Ko compressés) ne sont chargés qu'au zoom.
+  Zéro serveur à héberger ; l'API FastAPI reste servie par le stack Docker local. Équivalence
+  vérifiée sur 2 810 requêtes ([docs/deploiement.md](docs/deploiement.md)).
 
 ## Choix techniques (et pourquoi)
 
@@ -58,6 +63,7 @@ les prix, estimateur de bien et score d'investissement par commune.
 | **dbt pour le gold uniquement** | le procédural (géocodage BAN, KDTree spatial) reste en Python testé ; la modélisation SQL déclarative + tests + docs va à dbt |
 | **Rapprochement DPE↔vente géographique** | DVF n'a pas d'identifiant de logement : match par position (<50 m) + type + surface ±10 % + DPE antérieur à la vente ; couverture 48 %, rapprochements ambigus (même immeuble, étiquettes différentes) exclus des analyses |
 | **Marts pré-agrégés + WHERE en base + cache TTL** | aucun endpoint ne scanne les 128 600 ventes ; réponses en 3-45 ms ; le client ne reçoit jamais plus de 500 lignes |
+| **Quartiers IRIS** plutôt que sections cadastrales ou grille hexagonale | découpage officiel de l'INSEE, quartiers nommés (Mont Boron, Croisette-Palm-Beach), croisable avec les données INSEE infra-communales ; point dans polygone en silver, aucun chiffre publié sous 5 ventes |
 | **3D InstancedMesh + raycasting manuel** | ~160 barres = 1 draw call ; survol interactif fiable ; three.js chargé uniquement sur la landing |
 
 ## Le site — 7 vues
@@ -67,11 +73,11 @@ les prix, estimateur de bien et score d'investissement par commune.
 | ![Carte choroplèthe](docs/captures/carte.png) | ![Opportunités](docs/captures/opportunites.png) |
 
 1. **Marché** — maquette 3D interactive (1 barre = 1 commune, survol = prix), ticker de cotations, KPIs animés
-2. **Carte** — choroplèthe MapLibre des 163 communes, 4 métriques commutables instantanément
+2. **Carte** — choroplèthe MapLibre des 163 communes, 4 métriques commutables instantanément ; au zoom, prix et évolution **par quartier** (364 quartiers IRIS, même échelle de couleurs)
 3. **Tendances** — 20 trimestres de prix et volumes, zoom par commune
 4. **Comparateur** — 3 communes face à face + radar des 6 composantes du score
 5. **Rendement** — nuage prix/rendement + classement filtrable
-6. **Estimateur** — méthode transparente : médiane locale 24 mois × écart DPE départemental (appliqué seulement s'il est statistiquement fiable), refus sous 5 ventes
+6. **Estimateur** — méthode transparente : médiane locale 24 mois (du quartier s'il est choisi et assez fourni, sinon de la commune) × écart DPE départemental (appliqué seulement s'il est statistiquement fiable), refus sous 5 ventes
 7. **Opportunités** — score d'investissement 0-100 (6 composantes pondérées, centiles départementaux)
 
 Design « terminal éditorial » : charbon, ambre, Fraunces/Plex Mono, animations Framer Motion —
@@ -80,10 +86,10 @@ la 3D et les animations ne pénalisent jamais la donnée (bundles par route : 14
 ## Qualité des données
 
 - **9 règles de nettoyage documentées** ([docs/silver.md](docs/silver.md)) : 458 841 lignes DVF → 128 600 ventes fiables, entonnoir tracé dans les manifestes
-- **38 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
-- **87 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
+- **53 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
+- **115 tests pytest** hors-ligne (ingestion, règles silver, rattachement au quartier, API, export, intégrité du DAG)
 - **Intégration continue** (GitHub Actions) : pytest dans l'image Airflow du projet, validation dbt, typage et compilation du site à chaque push
-- **Garde-fous statistiques** : rendement calculé à ≥ 5 ventes/24 mois, score à ≥ 20 ventes — les tests ont réellement attrapé un village à 1 vente donnant 45 % de rendement fictif
+- **Garde-fous statistiques** : rendement calculé à ≥ 5 ventes/24 mois, score à ≥ 20 ventes, aucun prix de quartier publié sous 5 ventes (drapeau `fiable` à 20) — les tests ont réellement attrapé un village à 1 vente donnant 45 % de rendement fictif
 - **Fiabilité affichée, pas cachée** : fourchette de rendement et drapeau « loyer mesuré localement », intervalle de confiance sur l'écart DPE, niveau de fiabilité de chaque estimation ([docs/gold.md](docs/gold.md))
 
 ## Lancer en local
@@ -115,15 +121,15 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt/immo && dbt b
 
 ```
 ├── docker-compose.yml        # 5 services, une commande
-├── airflow/dags/             # DAG immo_pipeline (14 tâches)
+├── airflow/dags/             # DAG immo_pipeline (15 tâches)
 ├── pipelines/
 │   ├── ingestion/            # 1 module par source, idempotent + TTL fraîcheur
 │   └── silver/               # nettoyage, géocodage BAN (cache), enrichissement KDTree
-├── dbt/immo/                 # staging → intermediate → 5 marts + 38 tests
-├── api/                      # FastAPI, 10 endpoints filtrables + Dockerfile.deploy
+├── dbt/immo/                 # staging → intermediate → 6 marts + 53 tests
+├── api/                      # FastAPI, 11 endpoints filtrables + Dockerfile.deploy
 ├── frontend/                 # Next.js 15, R3F, MapLibre, Recharts, Framer Motion
 ├── scripts/deploy_api_hf.sh  # déploiement de l'API sur un hébergeur Docker
-├── tests/                    # 87 tests pytest
+├── tests/                    # 115 tests pytest
 └── docs/                     # une doc par couche + déploiement
 ```
 
@@ -144,4 +150,4 @@ Documentation détaillée : [ingestion](docs/ingestion.md) · [silver](docs/silv
 
 ## Licence
 
-MIT — données sources : licences ouvertes Etalab / INSEE / ADEME / ODbL (OSM).
+MIT — données sources : licences ouvertes Etalab / INSEE / ADEME / ODbL (OSM) ; contours IRIS : IGN / INSEE, Licence Ouverte 2.0.

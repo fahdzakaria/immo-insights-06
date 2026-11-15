@@ -24,6 +24,7 @@ logger = logging.getLogger("api.db")
 
 MARTS = [
     "mart_prix_m2_par_commune",
+    "mart_prix_m2_par_quartier",
     "mart_evolution_trimestrielle",
     "mart_rendement_locatif",
     "mart_impact_dpe",

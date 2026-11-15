@@ -30,3 +30,11 @@ models:
     columns:
       - name: code_commune
         tests: [unique, not_null]
+
+  - name: stg_iris
+    description: Référentiel des quartiers IRIS (contours IGN/INSEE), sans géométrie
+    columns:
+      - name: code_iris
+        tests: [unique, not_null]
+      - name: code_commune
+        tests: [not_null]

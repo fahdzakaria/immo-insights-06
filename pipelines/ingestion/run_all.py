@@ -11,7 +11,7 @@ import logging
 import sys
 
 from pipelines import config
-from pipelines.ingestion import dpe, dvf, insee, loyers, osm
+from pipelines.ingestion import dpe, dvf, insee, iris, loyers, osm
 
 SOURCES = {
     "dvf": dvf.ingest,
@@ -19,6 +19,7 @@ SOURCES = {
     "loyers": loyers.ingest,
     "dpe": dpe.ingest,
     "osm": osm.ingest,
+    "iris": iris.ingest,
 }
 
 

@@ -15,7 +15,8 @@ Swagger interactif : http://localhost:8001/docs
 | `GET /api/v1/rendement` | rendement locatif par commune, avec fourchette | `departement`, `type_bien`, `rendement_min`, `prix_m2_max`, `loyer_fiable`, `tri`, pagination |
 | `GET /api/v1/dpe/impact` | écart de prix par étiquette, intervalle de confiance, drapeau `fiable` | `departement`, `type_bien` |
 | `GET /api/v1/opportunites` | top communes par score | `departement`, `type_bien`, `score_min`, `prix_m2_max`, `loyer_fiable`, `limit` |
-| `GET /api/v1/estimation` | estimation de prix d'un bien | `code_commune`, `type_bien`, `surface`, `etiquette_dpe` |
+| `GET /api/v1/quartiers` | prix au m² par quartier IRIS (communes découpées par l'INSEE) ; prix NULL sous 5 ventes | `departement`, `code_commune`, `type_bien`, `fiable`, `tri` (prix_m2, ventes, evolution, ecart, nom), `ordre`, `limit/offset` |
+| `GET /api/v1/estimation` | estimation de prix d'un bien ; avec `code_iris`, référence du quartier (repli sur la commune sous 5 ventes, signalé par `maille` / `maille_motif`) | `code_commune`, `type_bien`, `surface`, `etiquette_dpe`, `code_iris` |
 
 ## Comment la rapidité est garantie
 
