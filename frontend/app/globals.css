@@ -1,27 +1,31 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Direction artistique « Terminal éditorial » — Bloomberg × presse.
-   Charbon chaud, encre claire, hairlines sombres, accent AMBRE
-   terminal ; vert/rouge de cotation pour les variations.
-   Typo : Fraunces (titres), Instrument Sans (corps), Plex Mono (data).
-   Pas de verre, pas de dégradés décoratifs.
+   Direction « Resend × Pryzm », validée le 2026-11-15.
+   Noir pur et beaucoup d'air (Resend) ; matière et textures
+   — verre cannelé, grain, trame — tirées de la donnée (Pryzm).
+   Un seul accent : l'ambre. Vert/rouge réservés aux variations.
+   Typo (comme pryzm.design) : Poppins (titres), Inter (corps),
+   Geist Mono (data) ; Instrument Serif pour le seul logo.
    ============================================================ */
 
 @theme {
-  --color-bg: #0c0c0a; /* charbon chaud */
-  --color-panel: #14140f; /* panneau */
-  --color-ink: #e8e4d6; /* encre claire (texte) */
-  --color-muted: #8a8574; /* encre diluée */
-  --color-line: #2a2820; /* hairline sombre */
-  --color-accent: #ffb020; /* ambre terminal */
-  --color-accent2: #ff6b57; /* corail (négatif / alerte) */
-  --color-good: #45d08c; /* vert de cotation */
-  --color-warn: #ffb020;
+  --color-bg: #000000;
+  --color-panel: #0a0a0a; /* cartes */
+  --color-raised: #111111; /* contrôles posés sur une carte */
+  --color-ink: #f2efe9; /* blanc cassé */
+  --color-muted: #8f8c84;
+  --color-line: #1f1f1f; /* bordure fine (≈ blanc 10 %) */
+  --color-line2: #2e2e2e; /* bordure au survol / champs */
+  --color-accent: #ffa31a; /* ambre */
+  --color-accent2: #ff6b57; /* rouge brique (négatif / alerte) */
+  --color-good: #3dd68c;
+  --color-warn: #ffa31a;
   --color-bad: #ff6b57;
-  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-fraunces), Georgia, serif;
-  --font-mono: var(--font-plexmono), ui-monospace, monospace;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geistmono), ui-monospace, monospace;
+  --font-logo: var(--font-serif-logo), Georgia, serif;
 }
 
 html {
@@ -34,29 +38,56 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Panneau terminal : fond charbon, hairline, ombre offset dure.
-   (La classe garde son nom historique .glass — plus aucun verre ici.) */
+/* Classes maison dans la couche components : les utilitaires Tailwind
+   (hidden, rounded-*, px-*…) gardent la priorité sur elles. */
+@layer components {
+/* Titres façon Pryzm : Poppins semi-gras, approche resserrée */
+.font-display {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Grain film global, très léger (texture Pryzm) */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Carte façon Resend : bordure fine, coins doux, lueur en haut.
+   (La classe garde son nom historique .glass — ce n'est pas du verre.) */
 .glass {
-  background: var(--color-panel);
+  position: relative;
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.045), transparent 60%),
+    var(--color-panel);
   border: 1px solid var(--color-line);
-  border-radius: 3px;
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
 }
 
 .glass-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: border-color 0.25s ease, transform 0.25s ease;
 }
 .glass-hover:hover {
-  transform: translate(-1px, -1px);
-  border-color: var(--color-accent);
-  box-shadow: 6px 6px 0 rgba(255, 176, 32, 0.12);
+  border-color: var(--color-line2);
+  transform: translateY(-2px);
+}
+
+/* Titres en dégradé blanc → blanc 55 % (Resend) */
+.titre-degrade {
+  background: linear-gradient(to right bottom, #fff 35%, rgba(255, 255, 255, 0.55));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Emphase éditoriale : italique serif à l'ambre */
 .text-gradient {
   color: var(--color-accent);
-  font-family: var(--font-display);
-  font-style: italic;
+  -webkit-text-fill-color: var(--color-accent);
 }
 
 /* Micro-label typographique (kickers, axes, légendes) */
@@ -68,43 +99,147 @@ body {
   color: var(--color-muted);
 }
 
+/* Légende deux lignes façon Pryzm, sous un visuel */
+.legende {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+.legende b {
+  display: block;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pastille « live » qui pulse (dynamisme terminal) */
-.live-dot {
-  position: relative;
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background: var(--color-good);
-  border-radius: 9999px;
+/* Boutons : principal blanc cassé, secondaire sombre bordé, pression immédiate */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.5rem;
+  padding: 0 1.125rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
 }
-.live-dot::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 9999px;
-  border: 1px solid var(--color-good);
-  animation: pulse-live 1.8s ease-out infinite;
+.btn:active {
+  transform: scale(0.97);
 }
-@keyframes pulse-live {
-  0% { transform: scale(0.6); opacity: 0.9; }
-  100% { transform: scale(1.6); opacity: 0; }
+.btn-clair {
+  background: var(--color-ink);
+  color: #000;
+}
+.btn-clair:hover {
+  background: #fff;
+}
+.btn-sombre {
+  border: 1px solid var(--color-line2);
+  background: var(--color-raised);
+  color: var(--color-ink);
+}
+.btn-sombre:hover {
+  border-color: #444;
+}
+.btn-sm {
+  height: 2rem;
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
 }
 
-/* Bandeau ticker (défilement continu, pause au survol) */
+/* Pastille bordée au-dessus des titres */
+.pastille {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 1.875rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--color-line2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.8125rem;
+  color: #c9c6bf;
+  transition: border-color 0.2s ease;
+}
+a.pastille:hover {
+  border-color: #444;
+}
+
+/* Contrôle segmenté (type de bien, métrique…) */
+.segmente {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-panel);
+}
+.segmente button {
+  border-radius: 7px;
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.segmente button:hover {
+  color: var(--color-ink);
+}
+.segmente button[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: #000;
+}
+
+/* Champ texte */
+.champ {
+  height: 2.5rem;
+  border: 1px solid var(--color-line2);
+  border-radius: 10px;
+  background: var(--color-panel);
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.champ::placeholder {
+  color: var(--color-muted);
+}
+.champ:focus {
+  border-color: var(--color-accent);
+}
+
+/* Bloc « code » à onglets (Resend) */
+.code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 2;
+  color: #cfcbc4;
+}
+.code .k { color: var(--color-accent); }
+.code .c { color: #8a877f; }
+.code .s { color: #e8e2d4; }
+
+/* Bandeau ticker (défilement continu, pause au survol), fondu aux bords */
 .ticker {
   overflow: hidden;
   border-top: 1px solid var(--color-line);
   border-bottom: 1px solid var(--color-line);
-  background: var(--color-panel);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
 }
 .ticker-track {
   display: flex;
   width: max-content;
-  animation: ticker-scroll 55s linear infinite;
+  animation: ticker-scroll 70s linear infinite;
 }
 .ticker:hover .ticker-track {
   animation-play-state: paused;
@@ -116,31 +251,49 @@ body {
 
 ::selection {
   background: var(--color-accent);
-  color: #0c0c0a;
+  color: #000;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-line) transparent;
+  scrollbar-color: #2a2a2a transparent;
+}
+
+input[type="range"] {
+  accent-color: var(--color-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .ticker-track { animation: none; }
-  .live-dot::after { animation: none; }
+  .btn:active { transform: none; }
+  .glass-hover:hover { transform: none; }
 }
 
-/* Tooltip MapLibre, assorti au terminal */
+} /* fin @layer components */
+
+/* Infobulle MapLibre façon Resend */
 .maplibregl-popup-content {
-  background: var(--color-panel) !important;
+  background: #0a0a0a !important;
   color: var(--color-ink) !important;
-  border: 1px solid var(--color-accent);
-  border-radius: 2px !important;
-  padding: 10px 12px !important;
+  border: 1px solid #2e2e2e;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
   font-family: var(--font-sans);
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
 }
 .maplibregl-popup-tip {
-  border-top-color: var(--color-accent) !important;
-  border-bottom-color: var(--color-accent) !important;
+  display: none;
+}
+.maplibregl-ctrl-group {
+  background: #0a0a0a !important;
+  border: 1px solid #2e2e2e;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid #2e2e2e !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) opacity(0.7);
 }

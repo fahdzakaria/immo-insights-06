@@ -31,13 +31,13 @@ export default function PageRendement() {
   const lignes = (data?.resultats ?? []).filter((r) => r.rendement_brut_pct != null);
 
   return (
-    <div className="pt-8">
+    <div className="pt-16 sm:pt-24">
       <TitreSection
         sur="Rendement locatif"
         titre="Où le loyer rembourse le mieux l'achat"
         sousTitre="Rendement brut = loyer de référence × 12 ÷ prix d'achat au m². Loyers : carte officielle 2025, loyers d'annonce charges comprises — le rendement réel hors charges est plus bas."
       />
-      <div className="glass mb-6 flex flex-wrap items-end gap-6 px-5 py-4">
+      <div className="glass mb-10 flex flex-wrap items-end gap-6 px-6 py-5">
         <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
         <div className="w-52">
           <Curseur label="Rendement minimum" valeur={rendementMin} onChange={setRendementMin}
@@ -52,8 +52,7 @@ export default function PageRendement() {
           onClick={() => setLoyerFiable((v) => !v)}
           aria-pressed={loyerFiable}
           title="Loyer prédit à l'échelle de la commune (assez d'annonces locales) et au moins 20 ventes. Décoché : inclut les communes au loyer extrapolé d'une zone plus large."
-          className={`label-mono cursor-pointer border border-ink px-4 py-2 transition-colors ${
-            loyerFiable ? "bg-ink !text-bg" : "hover:bg-ink/5"}`}
+          className={`btn btn-sm cursor-pointer ${loyerFiable ? "btn-clair" : "btn-sombre"}`}
         >
           {loyerFiable ? "✓ " : ""}Loyers fiables seulement
         </button>
@@ -64,7 +63,7 @@ export default function PageRendement() {
       {!erreur && !data && <Chargement />}
 
       {lignes.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-5">
+        <div className="grid gap-8 lg:grid-cols-5">
           <Reveal className="lg:col-span-3">
             <div className="glass h-full px-4 py-6">
               <h3 className="label-mono mb-2 px-2">
@@ -72,25 +71,25 @@ export default function PageRendement() {
               </h3>
               <ResponsiveContainer width="100%" height={380}>
                 <ScatterChart margin={{ top: 10, right: 16, left: 0, bottom: 4 }}>
-                  <CartesianGrid stroke="rgba(232,228,214,0.08)" />
-                  <XAxis type="number" dataKey="prix_m2_median" name="Prix €/m²" stroke="#8a8574"
-                         tickLine={false} axisLine={{ stroke: "#e8e4d6" }}
-                         tick={{ fontFamily: "var(--font-plexmono)", fontSize: 12 }}
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" />
+                  <XAxis type="number" dataKey="prix_m2_median" name="Prix €/m²" stroke="#8f8c84"
+                         tickLine={false} axisLine={{ stroke: "#2e2e2e" }}
+                         tick={{ fontFamily: "var(--font-geistmono)", fontSize: 12 }}
                          tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
                          domain={["dataMin - 200", "dataMax + 200"]} />
                   <YAxis type="number" dataKey="rendement_brut_pct" name="Rendement" unit=" %"
-                         stroke="#8a8574" tickLine={false} width={54}
-                         tick={{ fontFamily: "var(--font-plexmono)", fontSize: 12 }} />
+                         stroke="#8f8c84" tickLine={false} width={54}
+                         tick={{ fontFamily: "var(--font-geistmono)", fontSize: 12 }} />
                   <ZAxis type="number" dataKey="nb_ventes_24m" range={[30, 420]} name="Ventes" />
                   <Tooltip
-                    cursor={{ strokeDasharray: "4 4", stroke: "rgba(232,228,214,.35)" }}
-                    contentStyle={{ background: "#14140f", border: "1px solid #ffb020", borderRadius: 2,
-                                    fontFamily: "var(--font-plexmono)", fontSize: 12, color: "#e8e4d6" }}
+                    cursor={{ strokeDasharray: "4 4", stroke: "rgba(255,255,255,.35)" }}
+                    contentStyle={{ background: "#0a0a0a", border: "1px solid #2e2e2e", borderRadius: 12,
+                                    fontFamily: "var(--font-geistmono)", fontSize: 12, color: "#f2efe9" }}
                     formatter={(v: number, nom: string) =>
                       nom === "Prix €/m²" ? euro(v) : nom === "Rendement" ? `${v} %` : nombre(v)}
                     labelFormatter={() => ""}
                   />
-                  <Scatter data={lignes} fill="#ffb020" fillOpacity={0.55} stroke="#ffb020" animationDuration={600} />
+                  <Scatter data={lignes} fill="#ffa31a" fillOpacity={0.55} stroke="#ffa31a" animationDuration={600} />
                 </ScatterChart>
               </ResponsiveContainer>
               <p className="label-mono px-2">Taille du point = volume de ventes (fiabilité).</p>
@@ -100,7 +99,7 @@ export default function PageRendement() {
           <Reveal delay={0.08} className="lg:col-span-2">
             <div className="glass max-h-[500px] overflow-auto px-2 py-3">
               <table className="w-full text-sm">
-                <thead className="label-mono sticky top-0 border-b border-ink bg-panel text-left">
+                <thead className="label-mono sticky top-0 border-b border-line bg-panel text-left">
                   <tr>
                     <th className="px-3 py-2">Commune</th>
                     <th className="px-3 py-2 text-right">€/m²</th>

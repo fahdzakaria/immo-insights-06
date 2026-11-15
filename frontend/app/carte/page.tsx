@@ -1,10 +1,11 @@
 "use client";
 
-/** Vue Carte : choroplèthe interactive, métrique et type de bien commutables. */
+/** Vue Carte : choroplèthe interactive plein cadre, réglages dans un panneau
+ *  façon « studio » (bien, mesure, villes, échelle). */
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
-import type { Metrique, ValeurCommune, ValeurQuartier } from "@/components/CarteChoroplethe";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Echelle, Metrique, ValeurCommune, ValeurQuartier } from "@/components/CarteChoroplethe";
 import { ToggleTypeBien } from "@/components/filtres";
 import { Chargement, Erreur, TitreSection } from "@/components/ui";
 import type { CommunePrix, Opportunite, QuartierPrix, Rendement, TypeBien } from "@/lib/api";
@@ -29,10 +30,36 @@ const METRIQUES_QUARTIER: Metrique[] = ["prix_m2", "evolution"];
 const NB_RACCOURCIS = 6;
 const ZOOM_VILLE = 11.7;
 
+/** Section repliable du panneau studio. */
+function Section({ titre, valeur, children }: { titre: string; valeur?: string; children: React.ReactNode }) {
+  return (
+    <details open className="group border-t border-line first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="label-mono flex items-center gap-2">
+          <span className="inline-block transition-transform group-open:rotate-90">›</span>
+          {titre}
+        </span>
+        {valeur && <span className="text-xs text-ink">{valeur}</span>}
+      </summary>
+      <div className="px-4 pb-4">{children}</div>
+    </details>
+  );
+}
+
 export default function PageCarte() {
   const [typeBien, setTypeBien] = useState<TypeBien>("appartement");
   const [metrique, setMetrique] = useState<Metrique>("prix_m2");
   const [cible, setCible] = useState<{ centre: [number, number]; zoom: number; cle: number } | null>(null);
+  const [echelle, setEchelle] = useState<Echelle | null>(null);
+  const [panneauOuvert, setPanneauOuvert] = useState(true);
+  const [monte, setMonte] = useState(false);
+  // Sur téléphone le panneau couvrirait toute la carte : replié au départ
+  // (masqué en CSS jusqu'au montage pour éviter qu'il s'affiche un instant)
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 639px)").matches) setPanneauOuvert(false);
+    setMonte(true);
+  }, []);
+  const recevoirEchelle = useCallback((e: Echelle | null) => setEchelle(e), []);
 
   const { data: prix, erreur } = useApi<{ resultats: CommunePrix[] }>("/api/v1/communes", {
     departement: "06", type_bien: typeBien, limit: 500,
@@ -101,57 +128,112 @@ export default function PageCarte() {
   }, [prix, rendements, scores, metrique]);
 
   return (
-    <div className="pt-8">
+    <div className="pt-16 sm:pt-24">
       <TitreSection
         sur="Carte interactive"
-        titre="Chaque commune, colorée par la donnée"
-        sousTitre="Survole une commune pour le détail, zoome sur une ville pour descendre au quartier. Les filtres recalculent la carte instantanément — les données sont pré-agrégées."
+        titre="Chaque commune, chaque quartier"
+        sousTitre="Survolez une commune pour le détail, zoomez sur une ville pour descendre au quartier. Les réglages recalculent la carte instantanément : les données sont pré-agrégées."
       />
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
-        <div className="inline-flex border border-ink">
-          {METRIQUES.map((m, i) => (
-            <button
-              key={m.id}
-              onClick={() => setMetrique(m.id)}
-              className={`label-mono cursor-pointer px-4 py-2 transition-colors ${
-                i > 0 ? "border-l border-ink" : ""
-              } ${metrique === m.id ? "bg-accent !text-bg" : "hover:bg-ink/5"}`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {raccourcis.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className="label-mono">Par quartier →</span>
-          {raccourcis.map((r) => (
-            <button
-              key={r.code}
-              onClick={() => setCible({ centre: r.centre, zoom: ZOOM_VILLE, cle: Date.now() })}
-              title={`${r.nb} quartiers`}
-              className="label-mono cursor-pointer border-b border-accent/50 pb-0.5 !text-ink transition-colors hover:border-accent hover:!text-accent"
-            >
-              {r.nom}
-            </button>
-          ))}
-          {!maillesQuartier && (
-            <span className="label-mono !text-bad">
-              {metrique === "rendement" ? "Rendement" : "Score"} : à la commune seulement
-            </span>
-          )}
-        </div>
-      )}
       {erreur && <Erreur message={erreur} />}
-      <div className="glass h-[68vh] min-h-[460px] overflow-hidden p-1.5">
-        <Carte valeurs={valeurs} metrique={metrique} quartiers={quartiers} cible={cible} />
+
+      <div className="glass relative h-[78vh] min-h-[560px] overflow-hidden !rounded-[20px] p-1.5">
+        <div className="h-full overflow-hidden rounded-[14px]">
+          <Carte valeurs={valeurs} metrique={metrique} quartiers={quartiers} cible={cible} onEchelle={recevoirEchelle} />
+        </div>
+
+        {/* Panneau « studio » */}
+        <aside className={`absolute left-3 top-3 z-10 ${panneauOuvert ? "w-[min(290px,calc(100%-24px))]" : "w-auto"} overflow-hidden rounded-[14px] border border-line2 bg-[#0a0a0a]/95 shadow-[0_16px_40px_rgba(0,0,0,.6)]`}>
+          <button
+            onClick={() => setPanneauOuvert((o) => !o)}
+            aria-expanded={panneauOuvert}
+            className={`flex w-full cursor-pointer items-center justify-between gap-4 px-4 py-3 ${panneauOuvert ? "border-b border-line" : ""}`}
+          >
+            <span className="label-mono flex items-center gap-2 !text-ink">
+              Studio · carte
+            </span>
+            <span className="text-xs text-muted">{panneauOuvert ? "Replier" : "Réglages"}</span>
+          </button>
+          {panneauOuvert && (
+            <div className={`max-h-[calc(78vh-90px)] overflow-y-auto ${monte ? "" : "max-sm:hidden"}`}>
+              <Section titre="Bien" valeur={typeBien === "appartement" ? "Appartements" : "Maisons"}>
+                <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
+              </Section>
+              <Section titre="Mesure" valeur={METRIQUES.find((m) => m.id === metrique)?.label}>
+                <div className="flex flex-col gap-0.5">
+                  {METRIQUES.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setMetrique(m.id)}
+                      aria-pressed={metrique === m.id}
+                      className={`flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
+                        metrique === m.id ? "bg-white/[0.07] text-ink" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {m.label}
+                      <span className="label-mono">{METRIQUES_QUARTIER.includes(m.id) ? "quartier" : "commune"}</span>
+                    </button>
+                  ))}
+                </div>
+              </Section>
+              {raccourcis.length > 0 && (
+                <Section titre="Villes" valeur={`${raccourcis.length} raccourcis`}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {raccourcis.map((r) => (
+                      <button
+                        key={r.code}
+                        onClick={() => setCible({ centre: r.centre, zoom: ZOOM_VILLE, cle: Date.now() })}
+                        title={`${r.nb} quartiers`}
+                        className="btn btn-sm btn-sombre cursor-pointer"
+                      >
+                        {r.nom}
+                      </button>
+                    ))}
+                  </div>
+                  {!maillesQuartier && (
+                    <p className="legende mt-3 !text-bad">
+                      {metrique === "rendement" ? "Rendement" : "Score"} : à la commune seulement.
+                    </p>
+                  )}
+                </Section>
+              )}
+              <Section titre="Échelle" valeur="quantiles">
+                {echelle ? (
+                  <>
+                    <div className="flex h-2 overflow-hidden rounded-full">
+                      {/* seuils dédoublonnés : seules les teintes réellement utilisées */}
+                      {echelle.palette.slice(0, echelle.seuils.length + 1).map((c) => (
+                        <span key={c} className="flex-1" style={{ background: c }} />
+                      ))}
+                    </div>
+                    <div className="legende mt-1.5 flex justify-between tabular">
+                      <span>&lt; {echelle.format(echelle.seuils[0])}</span>
+                      <span>≥ {echelle.format(echelle.seuils[echelle.seuils.length - 1])}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="legende">Pas de valeur à afficher.</p>
+                )}
+                <dl className="legende mt-3 grid grid-cols-[1fr_auto] gap-y-1">
+                  <dt>Seuil d’affichage</dt>
+                  <dd className="text-ink">{SEUIL_VENTES_AFFICHAGE} ventes</dd>
+                  <dt>Fenêtre</dt>
+                  <dd className="text-ink">24 mois</dd>
+                  <dt className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#141414] ring-1 ring-line2" /> Éteint
+                  </dt>
+                  <dd className="text-ink">trop peu de ventes</dd>
+                </dl>
+              </Section>
+            </div>
+          )}
+        </aside>
       </div>
-      <p className="label-mono mt-3">
-        Couleurs par quantiles — les communes restées éteintes ont moins de {SEUIL_VENTES_AFFICHAGE} ventes
-        sur 24 mois : trop peu pour un prix de marché, quelle que soit la métrique.
+
+      <p className="legende mt-6 max-w-4xl">
+        Couleurs par quantiles. Une zone éteinte a moins de {SEUIL_VENTES_AFFICHAGE} ventes sur 24 mois : trop peu
+        pour un prix de marché, quelle que soit la mesure.
         {maillesQuartier
-          ? " En zoomant, les villes découpées par l'INSEE passent au quartier (IRIS), même échelle de couleurs ; un quartier éteint a moins de 5 ventes sur 24 mois (pour l'évolution : moins de 5 ventes sur l'une des deux années comparées)."
+          ? " En zoomant, les villes découpées par l'INSEE passent au quartier (IRIS), avec la même échelle de couleurs ; pour l'évolution, il faut aussi 5 ventes sur chacune des deux années comparées."
           : " Pas de loyers par quartier : rendement et score restent à la commune, même en zoomant."}
         {(metrique === "rendement" || metrique === "score") &&
           " Rendement et score : seules les communes au loyer mesuré localement (≥ 20 ventes) sont colorées."}

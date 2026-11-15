@@ -14,7 +14,7 @@ import { useApi } from "@/lib/hooks";
 import { euro, evolClass, nombre, pct } from "@/lib/format";
 
 // Trois encres d'imprimeur : bleu Klein, terracotta, vert anglais
-const COULEURS = ["#ffb020", "#ff6b57", "#45d08c"];
+const COULEURS = ["#ffa31a", "#ff6b57", "#3dd68c"];
 
 const AXES: { cle: keyof NonNullable<DetailCommune["scores"][number]>; label: string }[] = [
   { cle: "score_prix", label: "Prix" },
@@ -57,13 +57,13 @@ export default function PageComparateur() {
   });
 
   return (
-    <div className="pt-8">
+    <div className="pt-16 sm:pt-24">
       <TitreSection
         sur="Comparateur"
         titre="Trois communes, face à face"
         sousTitre="Prix, évolution, rendement et les six composantes du score d'investissement."
       />
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="mb-10 flex flex-wrap items-center gap-3">
         <ChampRecherche
           valeur={recherche}
           onChange={(v) => { setRecherche(v); ajouter(v); }}
@@ -75,7 +75,7 @@ export default function PageComparateur() {
           <button
             key={c.code_commune}
             onClick={() => setSelection((s) => s.filter((x) => x.code_commune !== c.code_commune))}
-            className="label-mono cursor-pointer border border-ink bg-panel px-3.5 py-2 transition-colors hover:bg-bad/10"
+            className="btn btn-sm btn-sombre cursor-pointer"
             style={{ color: COULEURS[i] }}
           >
             {c.nom_commune} ✕
@@ -91,9 +91,9 @@ export default function PageComparateur() {
       )}
 
       {selection.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-8 lg:grid-cols-2">
           {/* Cartes chiffres */}
-          <div className="grid gap-4">
+          <div className="grid gap-5">
             {selection.map((c, i) => {
               const appart = c.prix.find((p) => p.type_bien === "appartement") ?? c.prix[0];
               const rdt = c.rendement.find((r) => r.type_bien === appart?.type_bien);
@@ -102,11 +102,11 @@ export default function PageComparateur() {
                 <Reveal key={c.code_commune} delay={i * 0.07}>
                   <div className="glass glass-hover px-5 py-5">
                     <div className="mb-3 flex items-baseline justify-between">
-                      <h3 className="font-display text-xl font-bold" style={{ color: COULEURS[i] }}>
+                      <h3 className="font-display text-xl" style={{ color: COULEURS[i] }}>
                         {c.nom_commune}
                       </h3>
                       {score && (
-                        <span className="label-mono border border-ink px-2.5 py-1 !text-ink tabular">
+                        <span className="label-mono rounded-full border border-line2 px-2.5 py-1 !text-ink tabular">
                           {score.score_investissement}/100
                         </span>
                       )}
@@ -145,10 +145,10 @@ export default function PageComparateur() {
               </h3>
               <ResponsiveContainer width="100%" height={360}>
                 <RadarChart data={donneesRadar} outerRadius="72%">
-                  <PolarGrid stroke="rgba(232,228,214,0.15)" />
-                  <PolarAngleAxis dataKey="axe" tick={{ fill: "#8a8574", fontSize: 12, fontFamily: "var(--font-plexmono)" }} />
-                  <Tooltip contentStyle={{ background: "#14140f", border: "1px solid #ffb020", borderRadius: 2,
-                                           fontFamily: "var(--font-plexmono)", fontSize: 12, color: "#e8e4d6" }} />
+                  <PolarGrid stroke="rgba(255,255,255,0.15)" />
+                  <PolarAngleAxis dataKey="axe" tick={{ fill: "#8f8c84", fontSize: 12, fontFamily: "var(--font-geistmono)" }} />
+                  <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #2e2e2e", borderRadius: 12,
+                                           fontFamily: "var(--font-geistmono)", fontSize: 12, color: "#f2efe9" }} />
                   {selection.map((c, i) => (
                     <Radar key={c.code_commune} name={c.nom_commune} dataKey={c.nom_commune}
                            stroke={COULEURS[i]} fill={COULEURS[i]} fillOpacity={0.18} strokeWidth={2} />

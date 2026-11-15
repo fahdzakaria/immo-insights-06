@@ -1,6 +1,6 @@
 "use client";
 
-/** Contrôles de filtre partagés — style éditorial : chips inversées à l'encre. */
+/** Contrôles de filtre partagés : contrôle segmenté, champ, curseur. */
 
 import type { TypeBien } from "@/lib/api";
 
@@ -19,15 +19,9 @@ export function ToggleTypeBien({
     { label: "Maisons", v: "maison" as TypeBien },
   ];
   return (
-    <div className="inline-flex border border-ink">
-      {options.map((o, i) => (
-        <button
-          key={o.label}
-          onClick={() => onChange(o.v)}
-          className={`label-mono cursor-pointer px-4 py-2 transition-colors ${
-            i > 0 ? "border-l border-ink" : ""
-          } ${valeur === o.v ? "bg-ink !text-bg" : "hover:bg-ink/5"}`}
-        >
+    <div className="segmente">
+      {options.map((o) => (
+        <button key={o.label} onClick={() => onChange(o.v)} aria-pressed={valeur === o.v}>
           {o.label}
         </button>
       ))}
@@ -55,7 +49,7 @@ export function ChampRecherche({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         list={listeId}
-        className="w-full max-w-xs border border-ink bg-panel px-4 py-2 text-sm text-ink placeholder-muted outline-none transition-shadow focus:shadow-[3px_3px_0_rgba(13,46,168,0.25)]"
+        className="champ w-full max-w-xs"
       />
       {liste && listeId && (
         <datalist id={listeId}>
@@ -98,7 +92,7 @@ export function Curseur({
         step={pas}
         value={valeur}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="cursor-pointer accent-[#ffb020]"
+        className="cursor-pointer"
       />
     </label>
   );

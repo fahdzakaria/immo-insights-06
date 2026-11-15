@@ -57,7 +57,10 @@ export function Compteur({
       spring.on("change", (v) => {
         if (ref.current)
           ref.current.textContent =
-            prefixe + v.toLocaleString("fr-FR", { maximumFractionDigits: decimales, minimumFractionDigits: 0 }) + suffixe;
+            prefixe +
+            // Espace insécable classique : l'espace fine (U+202F) n'existe pas dans toutes les polices de titre
+            v.toLocaleString("fr-FR", { maximumFractionDigits: decimales, minimumFractionDigits: 0 }).replace(/\u202f/g, "\u00a0") +
+            suffixe;
       }),
     [spring, prefixe, suffixe, decimales],
   );
@@ -71,10 +74,12 @@ export function Compteur({
 
 export function TitreSection({ sur, titre, sousTitre }: { sur?: string; titre: string; sousTitre?: string }) {
   return (
-    <div className="mb-8 border-t-2 border-ink pt-4">
-      {sur && <div className="label-mono mb-3 !text-accent">{sur}</div>}
-      <h2 className="font-display text-3xl font-black tracking-tight sm:text-4xl">{titre}</h2>
-      {sousTitre && <p className="mt-3 max-w-2xl leading-relaxed text-muted">{sousTitre}</p>}
+    <div className="mb-12 sm:mb-16">
+      {sur && (
+        <div className="label-mono mb-5">{sur}</div>
+      )}
+      <h2 className="titre-degrade font-display text-3xl leading-[1.1] sm:text-[2.6rem]">{titre}</h2>
+      {sousTitre && <p className="mt-4 max-w-2xl leading-relaxed text-muted">{sousTitre}</p>}
     </div>
   );
 }
@@ -97,7 +102,7 @@ export function Erreur({ message, technique = true }: { message: string; techniq
   const conseil =
     SOURCE_DONNEES === "api" ? "vérifie que l’API tourne (docker compose up)" : "recharge la page";
   return (
-    <div className="glass border-bad/40 my-8 px-5 py-4 text-sm text-bad">
+    <div className="glass my-8 !border-bad/40 px-5 py-4 text-sm text-bad">
       ⚠ {message}{technique && ` — ${conseil}.`}
     </div>
   );

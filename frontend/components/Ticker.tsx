@@ -16,7 +16,7 @@ export default function Ticker({ communes }: { communes: CommunePrix[] }) {
   const Item = ({ c }: { c: CommunePrix }) => {
     const evo = c.evolution_1an_pct;
     return (
-      <span className="label-mono flex shrink-0 items-baseline gap-2 border-r border-line px-5 py-2.5">
+      <span className="label-mono flex shrink-0 items-baseline gap-2 px-6 py-3.5">
         <span className="!text-ink font-medium">{c.nom_commune}</span>
         <span className="tabular !text-accent">{euro(c.prix_m2_median)}/m²</span>
         {evo != null && (
@@ -29,7 +29,7 @@ export default function Ticker({ communes }: { communes: CommunePrix[] }) {
   };
 
   return (
-    <div className="ticker -mx-4 sm:-mx-6" aria-hidden>
+    <div className="ticker" aria-hidden>
       <div className="ticker-track">
         {/* piste doublée pour un défilement sans couture */}
         {[0, 1].map((serie) => (

@@ -24,10 +24,10 @@ function AnneauScore({ score }: { score: number }) {
   return (
     <div className="relative h-16 w-16 shrink-0">
       <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90">
-        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(232,228,214,0.12)" strokeWidth="6" />
+        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="6" />
         <motion.circle
           cx="32" cy="32" r={r} fill="none" strokeWidth="6" strokeLinecap="butt"
-          stroke={score >= 65 ? "#45d08c" : score >= 45 ? "#ffb020" : "#8a8574"}
+          stroke={score >= 65 ? "#3dd68c" : score >= 45 ? "#ffa31a" : "#8f8c84"}
           strokeDasharray={c}
           initial={{ strokeDashoffset: c }}
           whileInView={{ strokeDashoffset: c * (1 - score / 100) }}
@@ -35,7 +35,7 @@ function AnneauScore({ score }: { score: number }) {
           transition={{ duration: 1, ease: "easeOut" }}
         />
       </svg>
-      <div className="tabular absolute inset-0 flex items-center justify-center font-display text-lg font-black">
+      <div className="tabular absolute inset-0 flex items-center justify-center font-display text-lg">
         {score}
       </div>
     </div>
@@ -59,13 +59,13 @@ export default function PageOpportunites() {
   });
 
   return (
-    <div className="pt-8">
+    <div className="pt-16 sm:pt-24">
       <TitreSection
         sur="Opportunités"
         titre="Où investir dans le 06, selon la donnée"
         sousTitre="Score 0-100 croisant prix bas, rendement, marché en hausse, démographie, services et tension locative — en centiles départementaux, communes à ≥ 20 ventes/24 mois. Le rendement pèse 25 % du score : par défaut, seules les communes dont le loyer est mesuré localement sont affichées."
       />
-      <div className="glass mb-8 flex flex-wrap items-end gap-6 px-5 py-4">
+      <div className="glass mb-10 flex flex-wrap items-end gap-6 px-6 py-5">
         <ToggleTypeBien valeur={typeBien} onChange={(t) => t && setTypeBien(t)} />
         <div className="w-52">
           <Curseur label="Score minimum" valeur={scoreMin} onChange={setScoreMin} min={0} max={80} pas={5} />
@@ -78,8 +78,7 @@ export default function PageOpportunites() {
           onClick={() => setLoyerFiable((v) => !v)}
           aria-pressed={loyerFiable}
           title="Loyer prédit à l'échelle de la commune (assez d'annonces locales). Décoché : inclut les communes au loyer extrapolé d'une zone plus large."
-          className={`label-mono cursor-pointer border border-ink px-4 py-2 transition-colors ${
-            loyerFiable ? "bg-ink !text-bg" : "hover:bg-ink/5"}`}
+          className={`btn btn-sm cursor-pointer ${loyerFiable ? "btn-clair" : "btn-sombre"}`}
         >
           {loyerFiable ? "✓ " : ""}Loyers fiables seulement
         </button>
@@ -94,7 +93,7 @@ export default function PageOpportunites() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         {data?.resultats.map((o, i) => (
           <motion.div
             key={o.code_commune + o.type_bien}

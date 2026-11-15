@@ -62,13 +62,13 @@ export default function PageEstimateur() {
   }
 
   return (
-    <div className="pt-8">
+    <div className="pt-16 sm:pt-24">
       <TitreSection
         sur="Estimateur"
         titre="Combien vaut ce bien ?"
         sousTitre="Méthode 100 % transparente : médiane locale des ventes réelles sur 24 mois, ajustée de l'écart DPE observé quand il est statistiquement fiable — pas de boîte noire."
       />
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-8 lg:grid-cols-2">
         {/* -------- Formulaire -------- */}
         <div className="glass flex flex-col gap-6 px-6 py-7">
           <div>
@@ -90,7 +90,7 @@ export default function PageEstimateur() {
                 id="quartier-estimateur"
                 value={codeIris}
                 onChange={(e) => setCodeIris(e.target.value)}
-                className="w-full max-w-xs cursor-pointer border border-ink bg-panel px-4 py-2 text-sm text-ink outline-none"
+                className="champ w-full max-w-xs cursor-pointer"
               >
                 <option value="">Toute la commune</option>
                 {listeQuartiers.map((q) => (
@@ -104,12 +104,10 @@ export default function PageEstimateur() {
           )}
           <div>
             <label className="mb-1.5 block text-sm text-muted">Type de bien</label>
-            <div className="flex gap-2">
-              {(["appartement", "maison"] as TypeBien[]).map((t, i) => (
-                <button key={t} onClick={() => setTypeBien(t)}
-                        className={`label-mono cursor-pointer border border-ink px-4 py-2 transition-colors ${
-                          typeBien === t ? "bg-ink !text-bg" : "hover:bg-ink/5"} ${i > 0 ? "-ml-px" : ""}`}>
-                  {t}
+            <div className="segmente">
+              {(["appartement", "maison"] as TypeBien[]).map((t) => (
+                <button key={t} onClick={() => setTypeBien(t)} aria-pressed={typeBien === t}>
+                  {t === "appartement" ? "Appartement" : "Maison"}
                 </button>
               ))}
             </div>
@@ -121,12 +119,11 @@ export default function PageEstimateur() {
             <div className="flex flex-wrap gap-1.5">
               {["A", "B", "C", "D", "E", "F", "G"].map((e) => (
                 <button key={e} onClick={() => setDpe(dpe === e ? null : e)}
-                        className="h-9 w-9 cursor-pointer border font-bold transition-all"
+                        className="h-9 w-9 cursor-pointer rounded-lg border font-semibold transition-all"
                         style={{
                           background: dpe === e ? DPE_COULEURS[e] : "transparent",
-                          color: dpe === e ? "#0c0c0a" : DPE_COULEURS[e],
-                          borderColor: dpe === e ? "#e8e4d6" : DPE_COULEURS[e],
-                          boxShadow: dpe === e ? "3px 3px 0 rgba(0,0,0,0.5)" : "none",
+                          color: dpe === e ? "#000000" : DPE_COULEURS[e],
+                          borderColor: dpe === e ? "#f2efe9" : DPE_COULEURS[e],
                         }}>
                   {e}
                 </button>
@@ -136,7 +133,7 @@ export default function PageEstimateur() {
           <button
             onClick={estimer}
             disabled={!commune || enCours}
-            className="label-mono mt-2 cursor-pointer border border-accent bg-accent px-6 py-3.5 !text-bg transition-colors enabled:hover:bg-[#ffc44d] disabled:opacity-40"
+            className="btn btn-clair mt-2 cursor-pointer justify-center disabled:opacity-40"
           >
             {enCours ? "Calcul…" : "Estimer ce bien →"}
           </button>
@@ -162,7 +159,7 @@ export default function PageEstimateur() {
                   {resultat.maille === "quartier" ? `${resultat.nom_iris}, ${resultat.nom_commune}` : resultat.nom_commune}
                   {resultat.etiquette_dpe && ` · DPE ${resultat.etiquette_dpe}`}
                 </div>
-                <div className="tabular font-display text-5xl font-black text-accent">
+                <div className="tabular font-display text-4xl text-accent sm:text-5xl">
                   <Compteur valeur={resultat.prix_estime} suffixe=" €" />
                 </div>
 
@@ -172,15 +169,15 @@ export default function PageEstimateur() {
                     <span>{euro(resultat.fourchette_basse)}</span>
                     <span>{euro(resultat.fourchette_haute)}</span>
                   </div>
-                  <div className="relative h-2 bg-ink/10">
+                  <div className="relative h-2 rounded-full bg-white/10">
                     <motion.div
-                      className="absolute inset-y-0 bg-accent/25"
+                      className="absolute inset-y-0 rounded-full bg-accent/25"
                       initial={{ width: 0 }}
                       animate={{ width: "100%" }}
                       transition={{ duration: 0.8, delay: 0.2 }}
                     />
                     <div
-                      className="absolute top-1/2 h-4 w-4 -translate-y-1/2 border-2 border-panel bg-accent"
+                      className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black bg-accent"
                       style={{
                         left: `${((resultat.prix_estime - resultat.fourchette_basse) /
                           (resultat.fourchette_haute - resultat.fourchette_basse)) * 100}%`,
