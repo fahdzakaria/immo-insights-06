@@ -83,6 +83,22 @@ def elements_to_rows(elements: list[dict]) -> list[dict]:
     return rows
 
 
+def verifier_reponse(data: dict, dep: str) -> list[dict]:
+    """Refuse une réponse Overpass incomplète.
+
+    Quand Overpass dépasse son délai ou manque de mémoire, il répond quand même
+    HTTP 200, avec les éléments trouvés jusque-là et un champ `remark`. Sans ce
+    contrôle, un jeu de POI tronqué (voire vide) serait enregistré puis publié.
+    """
+    remarque = data.get("remark")
+    if remarque:
+        raise ValueError(f"Réponse Overpass incomplète pour le {dep} : {remarque[:200]}")
+    elements = data.get("elements") or []
+    if not elements:
+        raise ValueError(f"Réponse Overpass vide pour le {dep} : aucun point d'intérêt reçu")
+    return elements
+
+
 def ingest(departements: list[str], force: bool = False) -> list[Path]:
     produced: list[Path] = []
     for dep in departements:
@@ -93,7 +109,7 @@ def ingest(departements: list[str], force: bool = False) -> list[Path]:
             produced.append(out)
             continue
         resp = http_get(OVERPASS_URL, params={"data": query}, timeout=300)
-        elements = resp.json().get("elements", [])
+        elements = verifier_reponse(resp.json(), dep)
         df = pd.DataFrame(elements_to_rows(elements))
         atomic_write_parquet(df, out)
         write_manifest(out, source=source, rows=len(df), extra={"departement": dep, "query": query})

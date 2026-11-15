@@ -239,3 +239,38 @@ def test_iris_ingest_idempotent(monkeypatch, tmp_path):
     assert appels["n"] == 1
     iris.ingest(["06"], force=True)
     assert appels["n"] == 2
+
+
+def test_overpass_reponse_partielle_refusee():
+    """Overpass répond 200 même quand il coupe la requête : le champ remark le trahit."""
+    with pytest.raises(ValueError, match="incomplète"):
+        osm.verifier_reponse({"elements": [{"id": 1}], "remark": "runtime error: Query timed out"}, "06")
+    with pytest.raises(ValueError, match="vide"):
+        osm.verifier_reponse({"elements": []}, "06")
+    assert osm.verifier_reponse({"elements": [{"id": 1}]}, "06") == [{"id": 1}]
+
+
+def test_ban_retente_un_429(monkeypatch):
+    """Un 429 passager de la BAN est retenté au lieu de faire échouer le silver."""
+    from pipelines.silver import geocodage
+
+    class Rep:
+        def __init__(self, statut):
+            self.status_code = statut
+            self.content = b"adresse,code_postal,latitude,longitude,result_score\n1 rue x,06000,43.7,7.26,0.9\n"
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"HTTP {self.status_code}")
+
+    appels = {"n": 0}
+
+    def faux_post(*a, **kw):
+        appels["n"] += 1
+        return Rep(429 if appels["n"] < 3 else 200)
+
+    monkeypatch.setattr(geocodage._session, "post", faux_post)
+    monkeypatch.setattr(geocodage._appeler_ban.retry, "sleep", lambda s: None)
+    lot = pd.DataFrame({"adresse": ["1 rue x"], "code_postal": ["06000"]})
+    assert len(geocodage._appeler_ban(lot)) == 1
+    assert appels["n"] == 3

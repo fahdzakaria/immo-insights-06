@@ -14,7 +14,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.common import _session
+import requests
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+from pipelines.common import RetryableHTTPError, _session
 from pipelines.config import SILVER_DIR
 
 logger = logging.getLogger("silver.geocodage")
@@ -38,6 +41,17 @@ def _charger_cache() -> pd.DataFrame:
     return pd.DataFrame(columns=["adresse", "code_postal", "ban_lat", "ban_lon", "ban_score"])
 
 
+@retry(
+    # Le pipeline publié repart d'un cache vide : un 429 / 503 passager de la BAN
+    # ne doit pas faire échouer toute la semaine. Mêmes règles que http_get.
+    retry=retry_if_exception_type((
+        RetryableHTTPError, requests.ConnectionError, requests.Timeout,
+        requests.exceptions.ChunkedEncodingError,
+    )),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=2, max=60),
+    reraise=True,
+)
 def _appeler_ban(batch: pd.DataFrame) -> pd.DataFrame:
     """Envoie un lot d'adresses à l'endpoint CSV de la BAN."""
     csv_bytes = batch.to_csv(index=False).encode("utf-8")
@@ -51,6 +65,8 @@ def _appeler_ban(batch: pd.DataFrame) -> pd.DataFrame:
         },
         timeout=300,
     )
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise RetryableHTTPError(f"HTTP {resp.status_code} sur {BAN_CSV_URL}")
     resp.raise_for_status()
     return pd.read_csv(io.BytesIO(resp.content), dtype={"code_postal": "string"})
 

@@ -28,20 +28,47 @@ le site l'interroge (`NEXT_PUBLIC_DATA_SOURCE=api`).
 | `NEXT_PUBLIC_DATA_SOURCE` | `static` (défaut) | marts JSON embarqués, pas d'API |
 | | `api` | le site appelle `NEXT_PUBLIC_API_URL` (stack Docker) |
 
-## Publier des données fraîches
+## Publication automatique (GitHub Actions)
 
-1. Le DAG `immo_pipeline` termine par la tâche `export_json_front`, qui
-   réécrit `frontend/public/data/` **seulement si les tests dbt passent**.
-   À la main : `make export-front`.
-2. Redéployer le site :
+Le workflow `.github/workflows/publication.yml` publie le site sans dépendre
+d'un ordinateur allumé :
+
+| Déclencheur | Ce qui se passe |
+| --- | --- |
+| Chaque lundi matin (04:17 UTC) | pipeline complet à partir de zéro (`scripts/pipeline_complet.sh` : sources publiques → silver → marts dbt + tests → export JSON) ; si la donnée a changé, commit des JSON sur `main` puis publication |
+| Push sur `main` touchant `frontend/` | publication du site |
+| Manuel (onglet Actions → Publication → Run workflow) | comme le lundi ; une case permet de publier même sans changement de donnée |
+
+Si une source est indisponible ou qu'un test dbt échoue, le job s'arrête :
+rien n'est commité, l'ancien site reste en ligne, et GitHub prévient par
+e-mail. La donnée est jugée « changée » au bruit flottant près
+(`pipelines/export_front.py`), donc pas de commit ni de déploiement inutiles.
+L'export écrit aussi les contours des quartiers IRIS dans `geo/`, à côté du
+dossier des JSON : le workflow monte donc tout `frontend/public` dans le
+conteneur et commite `frontend/public/data` **et** `frontend/public/geo`
+(les contours ne changent qu'avec le millésime IRIS, une fois par an).
+
+Secrets à définir une fois (Settings → Secrets and variables → Actions) :
 
 ```bash
-make publier
-# équivaut à : cd frontend && npx vercel deploy --prod --yes --scope fahdzakarias-projects
+gh secret set VERCEL_TOKEN        # jeton créé sur https://vercel.com/account/tokens
+gh secret set VERCEL_ORG_ID       # champ orgId de frontend/.vercel/project.json
+gh secret set VERCEL_PROJECT_ID   # champ projectId du même fichier
 ```
 
-Prérequis une seule fois : `npx vercel login`. Le pied de page du site affiche
-la date réelle du dernier export (`public/data/meta.json`).
+Le stack Docker local (DAG Airflow quotidien) reste l'environnement de
+développement : il exporte ses JSON dans `data/front` (et les contours dans
+`data/geo`), non versionnés, pour ne pas modifier le dépôt à chaque run.
+
+## Publication manuelle (secours)
+
+```bash
+make export-front   # écrit frontend/public/data depuis les marts locaux
+make publier        # export + npx vercel deploy --prod (demande `npx vercel login`)
+```
+
+Le pied de page du site affiche la date réelle du dernier export
+(`public/data/meta.json`).
 
 ## Vérifier que le site statique répond comme l'API
 

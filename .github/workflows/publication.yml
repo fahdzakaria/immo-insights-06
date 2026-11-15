@@ -1,0 +1,132 @@
+# Publication automatique du site, sans dépendre d'un ordinateur allumé.
+#
+#  - Chaque lundi matin (et à la demande) : le pipeline complet tourne ici, à
+#    partir de zéro (sources publiques → silver → marts dbt + tests → export
+#    JSON). Si la donnée a changé, les JSON de frontend/public/data sont
+#    commités sur main, puis le site est publié.
+#  - À chaque push sur main qui touche frontend/ : le site est publié.
+#
+# Si une source est indisponible ou qu'un test dbt échoue, le job s'arrête :
+# rien n'est commité, l'ancien site reste en ligne et GitHub envoie un e-mail.
+#
+# Secrets requis (Settings → Secrets and variables → Actions) :
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID   — voir docs/deploiement.md
+name: Publication
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"   # lundi 04:17 UTC (≈ 05:17 ou 06:17 à Paris)
+  workflow_dispatch:
+    inputs:
+      publier_meme_sans_changement:
+        description: "Publier le site même si la donnée n'a pas changé"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["frontend/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Un groupe par type de run : un push ne doit pas évincer un run de données en attente
+  group: publication-${{ github.event_name == 'push' && 'site' || 'donnees' }}
+  cancel-in-progress: false
+
+jobs:
+  donnees:
+    name: Données (pipeline complet)
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write   # pour commiter les JSON mis à jour
+    outputs:
+      change: ${{ steps.commit.outputs.change }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Construire l'image du pipeline
+        run: docker build -t immo-airflow ./airflow
+
+      - name: Pipeline complet (bronze → silver → dbt → export JSON)
+        run: |
+          mkdir -p "$RUNNER_TEMP/data"
+          docker run --rm --user root \
+            -e PYTHONPATH=/opt/airflow \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -e DEPARTEMENTS=06 \
+            -e DATA_DIR=/data \
+            -e DUCKDB_PATH=/data/warehouse/immo.duckdb \
+            -e GOLD_DIR=/data/gold \
+            -e FRONT_DATA_DIR=/opt/airflow/front_public/data \
+            -v "$PWD/pipelines:/opt/airflow/pipelines:ro" \
+            -v "$PWD/scripts:/opt/airflow/scripts:ro" \
+            -v "$PWD/dbt:/opt/airflow/dbt" \
+            -v "$PWD/frontend/public:/opt/airflow/front_public" \
+            -v "$RUNNER_TEMP/data:/data" \
+            --entrypoint bash immo-airflow /opt/airflow/scripts/pipeline_complet.sh
+
+      - name: Commiter les données si elles ont changé
+        id: commit
+        run: |
+          # data/ : JSON des marts ; geo/ : contours des quartiers IRIS (écrits
+          # par l'export à côté de data/, changent une fois par an)
+          sudo chown -R "$(id -u):$(id -g)" frontend/public/data frontend/public/geo
+          if [ -z "$(git status --porcelain -- frontend/public/data frontend/public/geo)" ]; then
+            echo "change=false" >> "$GITHUB_OUTPUT"
+            echo "Donnée inchangée : rien à commiter." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "Zakaria Fahd"
+          git config user.email "81531910+fahdzakaria@users.noreply.github.com"
+          git add frontend/public/data frontend/public/geo
+          git commit -m "Données : export automatique du $(date -u +%Y-%m-%d)"
+          # main a pu avancer pendant les ~10 min du pipeline : on se replace dessus
+          # (seules les données de frontend/public changent ici, pas de conflit attendu)
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "change=true" >> "$GITHUB_OUTPUT"
+          echo "Données mises à jour et commitées sur main." >> "$GITHUB_STEP_SUMMARY"
+
+  site:
+    name: Site (publication Vercel)
+    needs: donnees
+    # push : toujours. Planifié / manuel : seulement si la donnée a changé (ou si demandé).
+    if: >-
+      !cancelled() && (
+        github.event_name == 'push' ||
+        (needs.donnees.result == 'success' &&
+          (needs.donnees.outputs.change == 'true' || inputs.publier_meme_sans_changement))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Vérifier les secrets Vercel
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Secrets Vercel manquants (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID) : le site ne peut pas être publié. Voir docs/deploiement.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # inclut le commit de données que le job précédent vient de pousser
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publier sur Vercel
+        working-directory: frontend
+        run: |
+          npx --yes vercel@65.14.0 deploy --prod --yes --token "$VERCEL_TOKEN" > "$RUNNER_TEMP/deploy.log" 2>&1 \
+            || { tail -30 "$RUNNER_TEMP/deploy.log"; exit 1; }
+          echo "Site publié : https://immo-insights-06.vercel.app" >> "$GITHUB_STEP_SUMMARY"

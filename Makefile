@@ -23,9 +23,9 @@ reset:         ## Stoppe tout et supprime les volumes (⚠ efface la DB Airflow)
 	docker compose down -v
 
 export-front:  ## Exporte les marts gold en JSON dans frontend/public/data
-	docker compose exec -T airflow-scheduler bash -c "cd /opt/airflow && python -m pipelines.export_front"
+	docker compose exec -T -e FRONT_DATA_DIR=/opt/airflow/front_public/data airflow-scheduler bash -c "cd /opt/airflow && python -m pipelines.export_front"
 
-publier: export-front  ## Publie le site (marts embarqués) sur Vercel
+publier: export-front  ## Publication MANUELLE de secours (la normale : GitHub Actions, workflow Publication)
 	cd frontend && npx vercel deploy --prod --yes --scope fahdzakarias-projects
 
 test-alerte:   ## Envoie un message de test sur les canaux d'alerte configurés dans .env
