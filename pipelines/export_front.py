@@ -85,6 +85,29 @@ def _ecrire(texte: str, chemin: Path) -> None:
 # changement : on tolère un écart juste au-dessus d'une unité d'arrondi.
 TOLERANCE_FLOTTANT = 1.5e-6
 
+# Garde-fou de la publication automatique : un mart qui perd d'un coup plus de
+# 20 % de ses lignes par rapport au dernier export signale une source tronquée
+# (API partielle, fichier coupé) plutôt qu'un vrai changement du marché. Dans
+# ce cas on refuse d'exporter : l'ancien site reste en ligne et le run échoue.
+# Pour accepter volontairement une baisse : EXPORT_ACCEPTER_BAISSE=1.
+BAISSE_MAX_LIGNES = 0.20
+
+
+def verifier_volumetrie(chemin: Path, nb_lignes: int, mart: str) -> None:
+    """Refuse un export dont le nombre de lignes chute de plus de BAISSE_MAX_LIGNES."""
+    if os.environ.get("EXPORT_ACCEPTER_BAISSE") == "1" or not chemin.exists():
+        return
+    try:
+        avant = len(json.loads(chemin.read_text(encoding="utf-8")).get("lignes", []))
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+        return
+    if avant and nb_lignes < (1 - BAISSE_MAX_LIGNES) * avant:
+        raise ValueError(
+            f"{mart} : {nb_lignes} lignes contre {avant} au dernier export "
+            f"(baisse de plus de {BAISSE_MAX_LIGNES:.0%}) — source probablement tronquée, export annulé. "
+            "Pour accepter cette baisse : EXPORT_ACCEPTER_BAISSE=1."
+        )
+
 
 def _meme_donnee(chemin: Path, table: dict) -> bool:
     """Le JSON déjà exporté contient-il la même donnée, au bruit flottant près ?"""
@@ -124,6 +147,7 @@ def exporter(gold_dir: Path | None = None, out_dir: Path | None = None) -> Path:
         table = lire_mart(src)
         if not table["lignes"]:
             raise ValueError(f"Mart gold vide : {src} — export annulé pour ne pas publier un site vide")
+        verifier_volumetrie(out_dir / f"{mart}.json", len(table["lignes"]), mart)
         tables[mart] = table
         volumetrie[mart] = len(table["lignes"])
 

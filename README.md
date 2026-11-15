@@ -83,6 +83,7 @@ la 3D et les animations ne pénalisent jamais la donnée (bundles par route : 14
 - **38 tests dbt** (unicité, bornes métier, cohérence quartiles, valeurs acceptées) — **bloquants** dans le DAG
 - **87 tests pytest** hors-ligne (ingestion, règles silver, API, intégrité du DAG)
 - **Intégration continue** (GitHub Actions) : pytest dans l'image Airflow du projet, validation dbt, typage et compilation du site à chaque push
+- **Publication automatique** (GitHub Actions) : chaque lundi, le pipeline complet tourne à partir de zéro dans le cloud ; si la donnée a changé, elle est commitée et le site est republié ([docs/deploiement.md](docs/deploiement.md))
 - **Garde-fous statistiques** : rendement calculé à ≥ 5 ventes/24 mois, score à ≥ 20 ventes — les tests ont réellement attrapé un village à 1 vente donnant 45 % de rendement fictif
 - **Fiabilité affichée, pas cachée** : fourchette de rendement et drapeau « loyer mesuré localement », intervalle de confiance sur l'écart DPE, niveau de fiabilité de chaque estimation ([docs/gold.md](docs/gold.md))
 

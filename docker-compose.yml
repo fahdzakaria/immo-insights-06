@@ -36,8 +36,9 @@ x-airflow-common: &airflow-common
     DBT_PROJECT_DIR: /opt/airflow/dbt/immo
     # Départements traités par le pipeline (paramétrable, ex: "06,83,13")
     DEPARTEMENTS: ${DEPARTEMENTS:-06}
-    # Export JSON des marts pour le front statique (écrit dans frontend/public/data)
-    FRONT_DATA_DIR: /opt/airflow/front_public/data
+    # Export JSON des marts : par défaut dans data/front (non versionné), pour ne
+    # pas modifier le dépôt à chaque run local — la publication est faite par
+    # GitHub Actions. `make export-front` écrit, lui, dans frontend/public/data.
     # Années DVF : vide = de DVF_ANNEE_DEBUT (2021) à l'année en cours
     DVF_ANNEES: ${DVF_ANNEES:-}
     DVF_ANNEE_DEBUT: ${DVF_ANNEE_DEBUT:-2021}

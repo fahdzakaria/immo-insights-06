@@ -97,8 +97,9 @@ with DAG(
     dbt_test = BashOperator(task_id="dbt_test", bash_command=DBT_CMD.format("test"))
     dbt_docs = BashOperator(task_id="dbt_docs", bash_command=DBT_CMD.format("docs generate"))
 
-    # Marts validés par dbt test → JSON embarqués par le site (frontend/public/data).
-    # Publier en ligne = redéployer le front (voir docs/deploiement.md).
+    # Marts validés par dbt test → JSON au format du site, écrits dans data/front
+    # (non versionné). Le site en ligne est publié par GitHub Actions (workflow
+    # Publication), qui refait tout le pipeline ; voir docs/deploiement.md.
     export_json_front = PythonOperator(task_id="export_json_front", python_callable=export_front.exporter)
 
     silver >> dbt_run >> dbt_test >> [dbt_docs, export_json_front]

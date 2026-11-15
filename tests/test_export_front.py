@@ -114,3 +114,19 @@ def test_changement_de_texte_ou_de_null_detecte(tmp_path):
     table["lignes"][0][2] = 4000                         # null → valeur
     assert not export_front._meme_donnee(out / "mart_impact_dpe.json", table)
     assert not export_front._meme_donnee(out / "absent.json", table)
+
+
+def test_chute_brutale_du_nombre_de_lignes_refusee(tmp_path, monkeypatch):
+    """Publication automatique : un mart qui passe de 2 à 1 ligne (−50 %) est refusé,
+    sauf si on l'accepte explicitement."""
+    monkeypatch.delenv("EXPORT_ACCEPTER_BAISSE", raising=False)
+    gold = _gold(tmp_path)
+    out = export_front.exporter(gold, tmp_path / "front")
+    df = pd.read_parquet(gold / "mart_impact_dpe.parquet").iloc[:1]
+    df.to_parquet(gold / "mart_impact_dpe.parquet", index=False)
+    with pytest.raises(ValueError, match="tronquée"):
+        export_front.exporter(gold, out)
+    assert len(json.loads((out / "mart_impact_dpe.json").read_text())["lignes"]) == 2  # rien n'a bougé
+    monkeypatch.setenv("EXPORT_ACCEPTER_BAISSE", "1")
+    export_front.exporter(gold, out)
+    assert len(json.loads((out / "mart_impact_dpe.json").read_text())["lignes"]) == 1
