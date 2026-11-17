@@ -293,7 +293,7 @@ def test_osm_bascule_sur_un_miroir_quand_la_principale_tombe(monkeypatch):
             raise requests.ConnectionError("Network is unreachable")
         return _ReponseOverpass({"elements": [{"id": 1}]})
 
-    monkeypatch.setattr(osm, "http_get", faux_get)
+    monkeypatch.setattr(osm, "_get_overpass", faux_get)
     elements, url = osm.interroger_overpass("q", "06")
     assert elements == [{"id": 1}]
     assert url == osm.OVERPASS_MIROIRS[1]
@@ -304,7 +304,7 @@ def test_osm_toutes_instances_en_panne_leve_une_erreur_claire(monkeypatch):
     def faux_get(url, **kwargs):
         raise common.RetryableHTTPError("HTTP 502")
 
-    monkeypatch.setattr(osm, "http_get", faux_get)
+    monkeypatch.setattr(osm, "_get_overpass", faux_get)
     with pytest.raises(osm.OverpassIndisponible, match="Aucune instance Overpass"):
         osm.interroger_overpass("q", "06")
 
@@ -334,3 +334,10 @@ def test_osm_sans_bronze_existant_la_panne_remonte(monkeypatch, tmp_path):
     with pytest.raises(osm.OverpassIndisponible):
         osm.ingest(["06"])
 
+
+
+def test_osm_reponse_json_qui_nest_pas_un_objet_est_refusee():
+    with pytest.raises(ValueError):
+        osm.verifier_reponse(None, "06")
+    with pytest.raises(ValueError):
+        osm.verifier_reponse([], "06")

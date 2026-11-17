@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from tenacity import stop_after_attempt
 
 from pipelines.common import RetryableHTTPError, already_ingested, atomic_write_parquet, http_get, write_manifest
 from pipelines.config import BRONZE_DIR
@@ -34,14 +35,17 @@ OVERPASS_MIROIRS = [
 ]
 # Connexion courte (un miroir injoignable est vite écarté), lecture longue (la
 # requête du département prend parfois plus d'une minute côté serveur).
-DELAIS_OVERPASS = (15, 300)
+DELAIS_OVERPASS = (15, 200)   # la requête demande au serveur d'abandonner à 180 s
+# 2 essais par instance au lieu de 5 : trois instances bloquées tiennent ainsi
+# dans ~20 min, sous le timeout de 45 min du job de publication.
+_get_overpass = http_get.retry_with(stop=stop_after_attempt(2))
 
 
 class OverpassIndisponible(RuntimeError):
     """Aucune instance Overpass n'a renvoyé de réponse exploitable."""
 
 # OSM évolue en continu : rafraîchissement hebdomadaire
-FRAICHEUR_JOURS = 7
+FRAICHEUR_JOURS = 6   # < 7 : le cron du lundi retrouve un bronze « périmé » et le rafraîchit chaque semaine
 
 # (catégorie, clé OSM, regex de valeurs)
 POI_FILTERS = [
@@ -105,6 +109,10 @@ def verifier_reponse(data: dict, dep: str) -> list[dict]:
     HTTP 200, avec les éléments trouvés jusque-là et un champ `remark`. Sans ce
     contrôle, un jeu de POI tronqué (voire vide) serait enregistré puis publié.
     """
+    if not isinstance(data, dict):
+        # JSON valide mais pas un objet (null, liste) : ValueError pour que
+        # interroger_overpass passe à l'instance suivante.
+        raise ValueError(f"Réponse Overpass inattendue pour le {dep} : {type(data).__name__}")
     remarque = data.get("remark")
     if remarque:
         raise ValueError(f"Réponse Overpass incomplète pour le {dep} : {remarque[:200]}")
@@ -119,7 +127,7 @@ def interroger_overpass(query: str, dep: str) -> tuple[list[dict], str]:
     echecs = []
     for url in OVERPASS_MIROIRS:
         try:
-            resp = http_get(url, params={"data": query}, timeout=DELAIS_OVERPASS)
+            resp = _get_overpass(url, params={"data": query}, timeout=DELAIS_OVERPASS)
             return verifier_reponse(resp.json(), dep), url
         except (requests.RequestException, RetryableHTTPError, ValueError) as exc:
             # ValueError couvre le JSON illisible et les réponses vides ou tronquées
