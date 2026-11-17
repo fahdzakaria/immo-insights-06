@@ -141,8 +141,14 @@ jobs:
   alerte:
     name: Alerte Telegram
     needs: [donnees, site]
-    # failure() : un job précédent a échoué (un job sauté ne compte pas comme un échec)
-    if: failure() || (github.event_name == 'workflow_dispatch' && inputs.tester_alerte)
+    # Échec OU annulation : un job qui dépasse son timeout-minutes finit « cancelled », pas
+    # « failure ». Un job sauté (donnée inchangée, push) ne déclenche rien.
+    if: >-
+      always() && (
+        contains(needs.*.result, 'failure') ||
+        contains(needs.*.result, 'cancelled') ||
+        (github.event_name == 'workflow_dispatch' && inputs.tester_alerte)
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -160,6 +166,8 @@ jobs:
           fi
           if [ "$RESULTAT_DONNEES" = "failure" ] || [ "$RESULTAT_SITE" = "failure" ]; then
             ENTETE="❌ Publication Immo Insights en échec"
+          elif [ "$RESULTAT_DONNEES" = "cancelled" ] || [ "$RESULTAT_SITE" = "cancelled" ]; then
+            ENTETE="⏱️ Publication Immo Insights interrompue (délai dépassé ou annulée)"
           else
             ENTETE="✅ Publication Immo Insights : test d'alerte (aucun échec)"
           fi
