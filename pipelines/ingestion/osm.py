@@ -17,13 +17,28 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import requests
 
-from pipelines.common import already_ingested, atomic_write_parquet, http_get, write_manifest
+from pipelines.common import RetryableHTTPError, already_ingested, atomic_write_parquet, http_get, write_manifest
 from pipelines.config import BRONZE_DIR
 
 logger = logging.getLogger("ingestion.osm")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Instances publiques de la même API Overpass, essayées dans l'ordre quand la
+# principale est en panne (vu le 2026-11-17 : « Network is unreachable » puis 502).
+OVERPASS_MIROIRS = [
+    OVERPASS_URL,
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
+# Connexion courte (un miroir injoignable est vite écarté), lecture longue (la
+# requête du département prend parfois plus d'une minute côté serveur).
+DELAIS_OVERPASS = (15, 300)
+
+
+class OverpassIndisponible(RuntimeError):
+    """Aucune instance Overpass n'a renvoyé de réponse exploitable."""
 
 # OSM évolue en continu : rafraîchissement hebdomadaire
 FRAICHEUR_JOURS = 7
@@ -99,6 +114,20 @@ def verifier_reponse(data: dict, dep: str) -> list[dict]:
     return elements
 
 
+def interroger_overpass(query: str, dep: str) -> tuple[list[dict], str]:
+    """Essaie chaque instance Overpass ; retourne (éléments, URL qui a répondu)."""
+    echecs = []
+    for url in OVERPASS_MIROIRS:
+        try:
+            resp = http_get(url, params={"data": query}, timeout=DELAIS_OVERPASS)
+            return verifier_reponse(resp.json(), dep), url
+        except (requests.RequestException, RetryableHTTPError, ValueError) as exc:
+            # ValueError couvre le JSON illisible et les réponses vides ou tronquées
+            logger.warning("Overpass %s inutilisable pour le %s (%s)", url, dep, type(exc).__name__)
+            echecs.append(f"{url} : {type(exc).__name__}")
+    raise OverpassIndisponible(f"Aucune instance Overpass pour le {dep} : " + " ; ".join(echecs))
+
+
 def ingest(departements: list[str], force: bool = False) -> list[Path]:
     produced: list[Path] = []
     for dep in departements:
@@ -108,11 +137,20 @@ def ingest(departements: list[str], force: bool = False) -> list[Path]:
         if already_ingested(out, source=source, force=force, max_age_jours=FRAICHEUR_JOURS):
             produced.append(out)
             continue
-        resp = http_get(OVERPASS_URL, params={"data": query}, timeout=300)
-        elements = verifier_reponse(resp.json(), dep)
+        try:
+            elements, url = interroger_overpass(query, dep)
+        except OverpassIndisponible:
+            if not out.exists():
+                raise
+            # Les points d'intérêt (écoles, gares, commerces) bougent peu d'une
+            # semaine à l'autre : mieux vaut un bronze un peu ancien qu'un site figé.
+            logger.warning("Overpass indisponible : on garde le bronze OSM existant du %s (%s)", dep, out)
+            produced.append(out)
+            continue
         df = pd.DataFrame(elements_to_rows(elements))
         atomic_write_parquet(df, out)
-        write_manifest(out, source=source, rows=len(df), extra={"departement": dep, "query": query})
+        write_manifest(out, source=source, rows=len(df),
+                       extra={"departement": dep, "query": query, "instance": url})
         logger.info("OSM %s : %d POI → %s", dep, len(df), out)
         produced.append(out)
     return produced

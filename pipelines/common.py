@@ -42,7 +42,7 @@ class RetryableHTTPError(Exception):
     wait=wait_exponential(multiplier=2, min=2, max=60),
     reraise=True,
 )
-def http_get(url: str, *, params: dict | None = None, timeout: int = 300, **kwargs) -> requests.Response:
+def http_get(url: str, *, params: dict | None = None, timeout: int | tuple[int, int] = 300, **kwargs) -> requests.Response:
     """GET avec retry sur les erreurs transitoires. 4xx (hors 429) remonte direct."""
     resp = _session.get(url, params=params, timeout=timeout, **kwargs)
     if resp.status_code == 429 or resp.status_code >= 500:

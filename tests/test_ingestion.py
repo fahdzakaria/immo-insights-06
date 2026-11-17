@@ -274,3 +274,63 @@ def test_ban_retente_un_429(monkeypatch):
     lot = pd.DataFrame({"adresse": ["1 rue x"], "code_postal": ["06000"]})
     assert len(geocodage._appeler_ban(lot)) == 1
     assert appels["n"] == 3
+
+
+class _ReponseOverpass:
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+def test_osm_bascule_sur_un_miroir_quand_la_principale_tombe(monkeypatch):
+    appels = []
+
+    def faux_get(url, **kwargs):
+        appels.append(url)
+        if url == osm.OVERPASS_URL:
+            raise requests.ConnectionError("Network is unreachable")
+        return _ReponseOverpass({"elements": [{"id": 1}]})
+
+    monkeypatch.setattr(osm, "http_get", faux_get)
+    elements, url = osm.interroger_overpass("q", "06")
+    assert elements == [{"id": 1}]
+    assert url == osm.OVERPASS_MIROIRS[1]
+    assert appels == osm.OVERPASS_MIROIRS[:2]
+
+
+def test_osm_toutes_instances_en_panne_leve_une_erreur_claire(monkeypatch):
+    def faux_get(url, **kwargs):
+        raise common.RetryableHTTPError("HTTP 502")
+
+    monkeypatch.setattr(osm, "http_get", faux_get)
+    with pytest.raises(osm.OverpassIndisponible, match="Aucune instance Overpass"):
+        osm.interroger_overpass("q", "06")
+
+
+def test_osm_garde_le_bronze_existant_si_overpass_est_en_panne(monkeypatch, tmp_path):
+    monkeypatch.setattr(osm, "BRONZE_DIR", tmp_path)
+    ancien = tmp_path / "osm" / "departement=06" / "pois.parquet"
+    ancien.parent.mkdir(parents=True)
+    pd.DataFrame({"id": [1]}).to_parquet(ancien)
+    monkeypatch.setattr(osm, "already_ingested", lambda *a, **k: False)   # bronze « trop vieux »
+
+    def panne(query, dep):
+        raise osm.OverpassIndisponible("panne")
+
+    monkeypatch.setattr(osm, "interroger_overpass", panne)
+    assert osm.ingest(["06"]) == [ancien]
+
+
+def test_osm_sans_bronze_existant_la_panne_remonte(monkeypatch, tmp_path):
+    monkeypatch.setattr(osm, "BRONZE_DIR", tmp_path)
+    monkeypatch.setattr(osm, "already_ingested", lambda *a, **k: False)
+
+    def panne(query, dep):
+        raise osm.OverpassIndisponible("panne")
+
+    monkeypatch.setattr(osm, "interroger_overpass", panne)
+    with pytest.raises(osm.OverpassIndisponible):
+        osm.ingest(["06"])
+

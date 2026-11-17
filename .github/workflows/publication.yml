@@ -59,6 +59,16 @@ jobs:
       - name: Construire l'image du pipeline
         run: docker build -t immo-airflow ./airflow
 
+      # Le data lake repart de zéro à chaque run, sauf les points d'intérêt OSM :
+      # on garde ceux du run précédent pour pouvoir s'en servir si Overpass est en
+      # panne (osm.py les réutilise alors au lieu de faire échouer la publication).
+      - name: Restaurer le bronze OSM du run précédent
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/data/bronze/osm
+          key: bronze-osm-06-${{ github.run_id }}
+          restore-keys: bronze-osm-06-
+
       - name: Pipeline complet (bronze → silver → dbt → export JSON)
         run: |
           mkdir -p "$RUNNER_TEMP/data"
