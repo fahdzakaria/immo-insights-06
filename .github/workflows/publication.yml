@@ -7,10 +7,13 @@
 #  - À chaque push sur main qui touche frontend/ : le site est publié.
 #
 # Si une source est indisponible ou qu'un test dbt échoue, le job s'arrête :
-# rien n'est commité, l'ancien site reste en ligne et GitHub envoie un e-mail.
+# rien n'est commité, l'ancien site reste en ligne, GitHub envoie un e-mail et
+# le job « alerte » prévient sur Telegram.
 #
 # Secrets requis (Settings → Secrets and variables → Actions) :
 #   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID   — voir docs/deploiement.md
+# Secrets optionnels (alerte d'échec) :
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID             — même bot que le .env local
 name: Publication
 
 on:
@@ -20,6 +23,10 @@ on:
     inputs:
       publier_meme_sans_changement:
         description: "Publier le site même si la donnée n'a pas changé"
+        type: boolean
+        default: false
+      tester_alerte:
+        description: "Envoyer un message Telegram de test à la fin, même sans échec"
         type: boolean
         default: false
   push:
@@ -130,3 +137,38 @@ jobs:
           npx --yes vercel@65.14.0 deploy --prod --yes --token "$VERCEL_TOKEN" > "$RUNNER_TEMP/deploy.log" 2>&1 \
             || { tail -30 "$RUNNER_TEMP/deploy.log"; exit 1; }
           echo "Site publié : https://immo-insights-06.vercel.app" >> "$GITHUB_STEP_SUMMARY"
+
+  alerte:
+    name: Alerte Telegram
+    needs: [donnees, site]
+    # failure() : un job précédent a échoué (un job sauté ne compte pas comme un échec)
+    if: failure() || (github.event_name == 'workflow_dispatch' && inputs.tester_alerte)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      RESULTAT_DONNEES: ${{ needs.donnees.result }}
+      RESULTAT_SITE: ${{ needs.site.result }}
+      LIEN_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Prévenir sur Telegram
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::warning::Secrets TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID absents : aucune alerte envoyée."
+            exit 0
+          fi
+          if [ "$RESULTAT_DONNEES" = "failure" ] || [ "$RESULTAT_SITE" = "failure" ]; then
+            ENTETE="❌ Publication Immo Insights en échec"
+          else
+            ENTETE="✅ Publication Immo Insights : test d'alerte (aucun échec)"
+          fi
+          MESSAGE="$ENTETE
+          Données : $RESULTAT_DONNEES · Site : $RESULTAT_SITE
+          $LIEN_RUN"
+          # --fail sans -v : le message d'erreur de curl ne contient pas l'URL (donc pas le jeton)
+          curl -sS --fail -o /dev/null -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}" \
+            --data-urlencode "disable_web_page_preview=true"
+          echo "Alerte Telegram envoyée." >> "$GITHUB_STEP_SUMMARY"
